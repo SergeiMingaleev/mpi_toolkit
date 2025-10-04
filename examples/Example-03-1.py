@@ -10,15 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 
-# Работаем с коммуникатором по всем доступным процессам:
-comm = MPI.COMM_WORLD
-
-# Число P доступных процессов в этом коммуникаторе:
-P = comm.Get_size()
-
-# Номер текущего процесса (от 0 до P-1):
-rank = comm.Get_rank()
-
 
 #------------------------------------------------------------------
 def conjugate_gradient_method(A_part, b_part, x_part,
@@ -41,11 +32,11 @@ def conjugate_gradient_method(A_part, b_part, x_part,
     while s <= N:
 
         if s == 1:
-            comm.Allgatherv([x_part, N_part, MPI.DOUBLE], 
+            comm.Allgatherv([x_part, N_part, MPI.DOUBLE],
                             [x, rcounts_N, displs_N, MPI.DOUBLE])
             r_temp = np.dot(A_part.T, np.dot(A_part, x) - b_part)
-            comm.Reduce_scatter([r_temp, N, MPI.DOUBLE], 
-                                [r_part, N_part, MPI.DOUBLE], 
+            comm.Reduce_scatter([r_temp, N, MPI.DOUBLE],
+                                [r_part, N_part, MPI.DOUBLE],
                                 recvcounts=rcounts_N, op=MPI.SUM)
         else:
             ScalP_temp[0] = np.dot(p_part, q_part)
@@ -62,7 +53,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
                         [p, rcounts_N, displs_N, MPI.DOUBLE])
         q_temp = np.dot(A_part.T, np.dot(A_part, p))
         comm.Reduce_scatter([q_temp, N, MPI.DOUBLE],
-                            [q_part, N_part, MPI.DOUBLE], 
+                            [q_part, N_part, MPI.DOUBLE],
                             recvcounts=rcounts_N, op=MPI.SUM)
 
         ScalP_temp[0] = np.dot(p_part, q_part)
@@ -73,16 +64,6 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         s = s + 1
 
     return x_part
-
-#------------------------------------------------------------------
-if rank == 0:
-    with open('Example-03-1_in.dat', 'r') as f1:
-        N = np.array(np.int32(f1.readline()))
-        M = np.array(np.int32(f1.readline()))
-else:
-    N = np.array(0, dtype=np.int32)
-
-comm.Bcast([N, 1, MPI.INT], root=0)
 
 
 #------------------------------------------------------------------
@@ -100,6 +81,26 @@ def auxiliary_arrays_determination(M, P):
     return rcounts, displs
 
 #------------------------------------------------------------------
+
+
+# Работаем с коммуникатором по всем доступным процессам:
+comm = MPI.COMM_WORLD
+
+# Число P доступных процессов в этом коммуникаторе:
+P = comm.Get_size()
+
+# Номер текущего процесса (от 0 до P-1):
+rank = comm.Get_rank()
+
+if rank == 0:
+    with open('Example-03-1_in.dat', 'r') as f1:
+        N = np.array(np.int32(f1.readline()))
+        M = np.array(np.int32(f1.readline()))
+else:
+    N = np.array(0, dtype=np.int32)
+
+comm.Bcast([N, 1, MPI.INT], root=0)
+
 if rank == 0:
     rcounts_M, displs_M = auxiliary_arrays_determination(M, P)
     rcounts_N, displs_N = auxiliary_arrays_determination(N, P)
