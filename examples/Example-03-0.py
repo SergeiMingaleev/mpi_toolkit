@@ -73,7 +73,6 @@
 
 import numpy as np
 
-
 #------------------------------------------------------------------
 def conjugate_gradient_method(A, b, x, N):
     """
@@ -211,14 +210,61 @@ print(f"\nFinal solution:\nx = {x}")
 
 # Подготовим рисунок и данные для него:
 import matplotlib.pyplot as plt
+
 plt.style.use('dark_background')
 fig = plt.figure()
 ax = plt.axes(xlim=(0, N), ylim=(-1.5, 1.5))
 ax.set_xlabel('i'); ax.set_ylabel('x[i]')
 # индексы элементов вектора `x`:
 ii = np.arange(np.int32(N))
-# Нарисуем полное решение:
-ax.plot(ii, x, '-y', lw=3)
+
+# Нарисуем полученное нами выше полное решение:
+ax.plot(ii, x, '-y', lw=3, label='conj_grad (A)')
+
+# Сравним это решение с решением, полученным через
+# стандартную функцию `scipy.linalg.solve`:
+import scipy.linalg
+
+# Решить само уравнение `A*x = b` не получится:
+# ValueError: Input a needs to be a square matrix
+#x2 = scipy.linalg.solve(A, b)
+
+# Хорошо - сделаем квадратную матрицу умножением на `A.T` слева:
+AT_A = A.T.dot(A)
+AT_b = A.T.dot(b)
+x2 = scipy.linalg.solve(AT_A, AT_b)
+ax.plot(ii, x2, '--b', lw=1, label='scipy.linalg.solve (A.T*A)')
+
+# `x2` получился очень неточным - попробуем решить уравнение другой
+# функцией `scipy.linalg.lstsq` по методу наименьших квадратов:
+x3, residuals, rank, s = scipy.linalg.lstsq(A, b)
+ax.plot(ii, x3, '--g', lw=2, label='scipy.linalg.lstsq (A)')
+
+# `x3` получился лучше, но ещё неточным - попробуем подставить
+# квадратную матрицу:
+
+x4, residuals, rank, s = scipy.linalg.lstsq(AT_A, AT_b)
+ax.plot(ii, x4, '--r', lw=2, label='scipy.linalg.lstsq (A.T*A)')
+
+# Хорошие результаты даёт регуляризация по методу Тихонова
+# (с не слишком маленьким значением `alpha`):
+
+alpha = 1e-17
+#alpha = 1e-15
+A_reg = A.T.dot(A) + alpha*np.eye(N)
+
+x5 = scipy.linalg.solve(A_reg, AT_b)
+ax.plot(ii, x5, '--w', lw=2, label='solve (A.T*A, regularized)')
+
+# Наконец, есть и встроенный в `scipy.sparse` метод сопряжённых градиентов:
+
+import scipy.sparse.linalg
+
+#x6, info = scipy.sparse.linalg.cg(A, b)
+x6, info = scipy.sparse.linalg.cg(AT_A, AT_b)
+ax.plot(ii, x6, '--m', lw=2, label='scipy.sparse.linalg.cg (A.T*A)')
+
+plt.legend()
 plt.show()
 
 #------------------------------------------------------------------
