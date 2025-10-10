@@ -1,3 +1,4 @@
+import numpy as np
 from mpi4py import MPI
 
 
@@ -56,7 +57,7 @@ class CPU_Timer:
         return self._time_sum + time_add
 
     def show(self, info):
-        print(f"Elapsed time for {info}: {self.time()} sec.")
+        print(f"Elapsed time for '{info}': {self.time()} sec.")
 
 
 #------------------------------------------------------------------
@@ -121,17 +122,25 @@ class CPU_TimerMap:
     def show(self, id = None):
         if id is not None:
             self._timer[id].show(id)
-        
+
         sorted_by_time = dict(sorted(self._timer.items(),
                                      key=lambda item: item[1].time(),
                                      reverse=True))
 
+        max_time_ms = 1e3 * np.max([item.time() for item in self._timer.values()])
+        id_max_len = np.max(list(map(len, self._timer.keys())))
         pp = f"[{self._rank}/{self._P}]"
-        print(f"{pp} ======================== CPU_Timer Summary: ===============================")
+
+        print(f"{pp} ============================= CPU_Timer Summary: ===============================")
         for id in sorted_by_time:
-            print(f"{pp} {sorted_by_time[id].time()} sec \t -- {id} \t "
-                  f"({self._number_of_calls[id]} calls == "
-                  f"{sorted_by_time[id].time() / self._number_of_calls[id]} sec/call)")
-        print(f"{pp} ===========================================================================")
+            t = 1e3 * sorted_by_time[id].time() # ms
+            N = self._number_of_calls[id]
+
+            print(f"{pp} {t:10,.4f} ms "
+                  f"({100 * t / max_time_ms:7,.3f} %)"
+                  f" -- {id.ljust(id_max_len)} "
+                  f"-- {N:6} calls == "
+                  f"{t / N:11,.5f} ms/call")
+        print(f"{pp} ================================================================================")
 
 #------------------------------------------------------------------
