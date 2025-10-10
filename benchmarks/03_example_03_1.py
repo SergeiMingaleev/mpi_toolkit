@@ -189,6 +189,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
     """
     mpi_timer.start('conjugate_gradient_method')
 
+    mpi_timer.start('conj step 0: prepare data')
     # Для нахождения произведения матрицы `A` на вектор решения `x` и
     # на вспомогательный вектор `p`, нам понадобится знать `x` и `p`
     # полностью на каждом процессе - сделаем "хранилища" для них:
@@ -214,6 +215,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
     # собранных на каждом из процессов для пополнения значения `dot_vec`):
     dot_vec = np.array(0, dtype=np.float64)
     dot_vec_temp = np.empty(1, dtype=np.float64)
+    mpi_timer.stop('conj step 0: prepare data')
 
     # Цикл по итерациям s от 1 до N включительно:
     for s in range(1, N + 1):
@@ -221,6 +223,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # Шаг 1:
         # Обновим или создадим вектор `r`.
         if s == 1:
+            mpi_timer.start('conj step 1: update r at s=1')
             # Сначала, на первой итерации s=1, нужно создать вектор `r`:
             #   r_{s} = A.T.dot(A.dot(x_{s}) - b)
 
@@ -246,6 +249,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
             comm.Reduce_scatter([r_temp, N, MPI.DOUBLE],
                                 [r_part, N_part, MPI.DOUBLE],
                                 recvcounts=rcounts_N, op=MPI.SUM)
+            mpi_timer.stop('conj step 1: update r at s=1')
         else:
             # На всех последующих итерациях, вектор `r` нужно просто
             # обновить:
@@ -263,12 +267,15 @@ def conjugate_gradient_method(A_part, b_part, x_part,
             # `dot_vec`, где оно до сих пор ещё и хранится (одно и то же
             # значение на каждом процессе!).
             # Просто воспользуемся им для обновления `r_part`:
+            mpi_timer.start('conj step 1: update r at s>1')
             r_part = r_part - q_part/dot_vec
+            mpi_timer.stop('conj step 1: update r at s>1')
 
         #------------------------------------------------------------
         # Шаг 2:
         # Посчитаем скалярное произведение векторов dot(r, r): 
         #    dot_rr = dot(r_{s}, r_{s})
+        mpi_timer.start('conj step 2: dot(r,r)')
 
         # Первым делом, на каждом процессе получим скалярное
         # произведение кусочков `r_part` с самими собой:
@@ -281,11 +288,13 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # (префикс `All`):
         comm.Allreduce([dot_vec_temp, 1, MPI.DOUBLE],
                        [dot_vec, 1, MPI.DOUBLE], op=MPI.SUM)
+        mpi_timer.stop('conj step 2: dot(r,r)')
 
         #------------------------------------------------------------
         # Шаг 3:
         # Обновим вектор `p`: 
         #    p_{s} = p_{s-1} + r_{s} / dot_rr
+        mpi_timer.start('conj step 3: update p')
 
         # Первым делом, обновим на каждом процессе свой кусочек
         # `p_part` вектора `p`:
@@ -296,11 +305,13 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # всем процессам (префикс `All`!):
         comm.Allgatherv([p_part, N_part, MPI.DOUBLE],
                         [p, rcounts_N, displs_N, MPI.DOUBLE])
+        mpi_timer.stop('conj step 3: update p')
 
         #------------------------------------------------------------
         # Шаг 4:
         # Обновим вектор `q`: 
         #    q_{s} = A.T.dot(A.dot(p_{s}))
+        mpi_timer.start('conj step 4: update q')
 
         # На каждом процессе мы можем собрать частично просуммированный
         # полный вектор `q` с размером N, поместив эту часть в локальный
@@ -315,11 +326,13 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         comm.Reduce_scatter([q_temp, N, MPI.DOUBLE],
                             [q_part, N_part, MPI.DOUBLE],
                             recvcounts=rcounts_N, op=MPI.SUM)
+        mpi_timer.stop('conj step 4: update q')
 
         #------------------------------------------------------------
         # Шаг 5:
         # Посчитаем скалярное произведение векторов dot(p, q): 
         #    dot_pq = dot(p_{s}, q_{s})
+        mpi_timer.start('conj step 5: dot(p,q)')
 
         # Первым делом, на каждом процессе получим скалярное
         # произведение кусочков `p_part` и `q_part`:
@@ -332,11 +345,13 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # (префикс `All`):
         comm.Allreduce([dot_vec_temp, 1, MPI.DOUBLE],
                        [dot_vec, 1, MPI.DOUBLE], op=MPI.SUM)
+        mpi_timer.stop('conj step 5: dot(p,q)')
 
         #------------------------------------------------------------
         # Шаг 6:
         # Обновим вектор `x`:
         #    x_{s+1} = x_{s} - p_{s} / dot_pq
+        mpi_timer.start('conj step 6: update x')
 
         # Сейчас мы, наконец, можем обновить `x_part` на каждом процессе:
         x_part = x_part - p_part / dot_vec
@@ -345,6 +360,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # в полном виде этот вектор был нам нужен только на самой
         # первой итерации, и будет потом нужен только после завершения
         # работы этой функции.
+        mpi_timer.stop('conj step 6: update x')
 
     mpi_timer.stop('conjugate_gradient_method')
     return x_part
