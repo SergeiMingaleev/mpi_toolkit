@@ -4,6 +4,9 @@
 # Первый счётчик встроен в стандартную библиотеку Python:
 #   import time
 #   t = time.perf_counter()
+# Тот же счётчик, но возвращает значение типа int (вместо float)
+# в наносекундах (вместо секунд):
+#   t_ns = time.perf_counter_ns()
 #
 # Второй счётчик - это обёртка над вызовом `MPI_Wtime()`:
 #   from mpi4py import MPI
@@ -51,6 +54,11 @@ if rank == 0:
 
 #------------------------------------------------------------------
 
+t0_pc_ns = time.perf_counter_ns()
+for i in range(N):
+    pass
+t1_pc_ns = time.perf_counter_ns()
+
 t0_pc = time.perf_counter()
 for i in range(N):
     pass
@@ -61,10 +69,12 @@ for i in range(N):
     pass
 t1_mpi = MPI.Wtime()
 
+dt_pc_ns = t1_pc_ns - t0_pc_ns
 dt_pc = t1_pc - t0_pc
 dt_mpi = t1_mpi - t0_mpi
 
 print("Timing for empty cycles:")
+print(f"   time.perf_counter_ns(): {dt_pc_ns} ns ({1e-9*dt_pc_ns} sec) on process {rank}")
 print(f"   time.perf_counter(): {dt_pc} seconds on process {rank}")
 print(f"   mpi4py.MPI.Wtime():  {dt_mpi} seconds on process {rank}")
 print()
@@ -74,6 +84,11 @@ print()
 x = 2.0
 y = 1.17
 
+t0_pc_ns = time.perf_counter_ns()
+for i in range(N):
+    x = x * y
+t1_pc_ns = time.perf_counter_ns()
+
 t0_pc = time.perf_counter()
 for i in range(N):
     x = x * y
@@ -84,15 +99,22 @@ for i in range(N):
     x = x * y
 t1_mpi = MPI.Wtime()
 
+dt_pc_ns = t1_pc_ns - t0_pc_ns
 dt_pc = t1_pc - t0_pc
 dt_mpi = t1_mpi - t0_mpi
 
 print("Timing for arithmetic cycles:")
+print(f"   time.perf_counter_ns(): {dt_pc_ns} ns ({1e-9*dt_pc_ns} sec) on process {rank}")
 print(f"   time.perf_counter(): {dt_pc} seconds on process {rank}")
 print(f"   mpi4py.MPI.Wtime():  {dt_mpi} seconds on process {rank}")
 print()
 
 #------------------------------------------------------------------
+
+t0_pc_ns = time.perf_counter_ns()
+for i in range(N):
+    t = time.perf_counter_ns()
+t1_pc_ns = time.perf_counter_ns()
 
 t0_pc = time.perf_counter()
 for i in range(N):
@@ -104,15 +126,18 @@ for i in range(N):
     t = MPI.Wtime()
 t1_mpi = MPI.Wtime()
 
+dt_pc_ns = t1_pc_ns - t0_pc_ns
 dt_pc = t1_pc - t0_pc
 dt_mpi = t1_mpi - t0_mpi
 
 print("Timing for time cycles:")
+print(f"   time.perf_counter_ns(): {dt_pc_ns} ns ({1e-9*dt_pc_ns} sec) on process {rank}")
 print(f"   time.perf_counter(): {dt_pc} seconds on process {rank}")
 print(f"   mpi4py.MPI.Wtime():  {dt_mpi} seconds on process {rank}")
 print()
 
 print("Estimated time for one time counter call:")
+print(f"   time.perf_counter_ns(): {dt_pc_ns/N} ns ({1e-9*dt_pc_ns/N} sec) on process {rank}")
 print(f"   time.perf_counter(): {dt_pc/N} seconds on process {rank}")
 print(f"   mpi4py.MPI.Wtime():  {dt_mpi/N} seconds on process {rank}")
 print()
@@ -120,5 +145,6 @@ print()
 #------------------------------------------------------------------
 # ВЫВОД: На Windows вызов `mpi4py.MPI.Wtime()` занимает меньше
 # времени, чем вызов `time.perf_counter()` (примерно на 30%).
+# Вызов же `time.perf_counter_ns()` оказался самым долгим.
 # Используем дальше `mpi4py.MPI.Wtime()`!
 #------------------------------------------------------------------
