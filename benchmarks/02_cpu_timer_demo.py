@@ -1,5 +1,5 @@
 #------------------------------------------------------------------
-# Демонстрация использования самодельного класса `CPU_TimerMap`
+# Демонстрация использования самодельного класса `BenchmarkTimer`
 # и проверка скорости его работы.
 #
 # Описание работы класса смотри в файле "cpu_timer.py"
@@ -7,12 +7,12 @@
 #------------------------------------------------------------------
 
 from mpi4py import MPI
-from cpu_timer import CPU_TimerMap
+from cpu_timer import BenchmarkTimer
 
 N = 1_000_000
 
 #------------------------------------------------------------------
-mpi_timer = CPU_TimerMap()
+mpi_timer = BenchmarkTimer()
 
 mpi_timer.start("empty cycles")
 for i in range(N):
@@ -37,58 +37,38 @@ for i in range(N):
 mpi_timer.stop("MPI.Wtime cycles")
 
 #------------------------------------------------------------------
-cpu_timer_test = CPU_TimerMap()
+cpu_timer_test = BenchmarkTimer()
 
-mpi_timer.start("CPU_Timer start")
+mpi_timer.start("BenchmarkTimer.start")
 for i in range(N):
-    cpu_timer_test.start("CPU_Timer start")
-mpi_timer.stop("CPU_Timer start")
+    cpu_timer_test.start("BenchmarkTimer.start")
+mpi_timer.stop("BenchmarkTimer.start")
 
-cpu_timer_test.add("CPU_Timer start_fast")
-
-mpi_timer.start("CPU_Timer start_fast")
+mpi_timer.start("BenchmarkTimer.stop")
 for i in range(N):
-    cpu_timer_test.start_fast("CPU_Timer start_fast")
-mpi_timer.stop("CPU_Timer start_fast")
-
-mpi_timer.start("CPU_Timer stop")
-for i in range(N):
-    cpu_timer_test.start("CPU_Timer stop")
-mpi_timer.stop("CPU_Timer stop")
+    cpu_timer_test.start("BenchmarkTimer.stop")
+mpi_timer.stop("BenchmarkTimer.stop")
 
 #------------------------------------------------------------------
-cpu_timer_test = CPU_TimerMap()
+cpu_timer_test = BenchmarkTimer()
 
-mpi_timer.start("CPU_Timer start/stop")
+mpi_timer.start("BenchmarkTimer.start/stop")
 for i in range(N):
-    cpu_timer_test.start("CPU_Timer start/stop")
-    cpu_timer_test.stop("CPU_Timer start/stop")
-mpi_timer.stop("CPU_Timer start/stop")
-
-#------------------------------------------------------------------
-cpu_timer_test.add("CPU_Timer start_fast/stop")
-
-mpi_timer.start("CPU_Timer start_fast/stop")
-for i in range(N):
-    cpu_timer_test.start_fast("CPU_Timer start_fast/stop")
-    cpu_timer_test.stop("CPU_Timer start_fast/stop")
-mpi_timer.stop("CPU_Timer start_fast/stop")
+    cpu_timer_test.start("BenchmarkTimer.start/stop")
+    cpu_timer_test.stop("BenchmarkTimer.start/stop")
+mpi_timer.stop("BenchmarkTimer.start/stop")
 
 #------------------------------------------------------------------
 
-mpi_timer.show()
-cpu_timer_test.show()
+mpi_timer.print_status()
+cpu_timer_test.print_status()
 
 #------------------------------------------------------------------
 # ВЫВОД:
-# На Windows использование пары команд `CPU_TimerMap.start(msg)`
-# и `CPU_TimerMap.stop(msg)` занимает в ~2 раза больше времени,
+# На Windows использование пары команд `BenchmarkTimer.start(msg)`
+# и `BenchmarkTimer.stop(msg)` занимает в ~2 раза больше времени,
 # чем два вызова `mpi4py.MPI.Wtime()`, и соответствует ~4
 # арифметическим операциям.
-#
-# Использование же пары команд `CPU_TimerMap.start_fast(msg)`
-# # и `CPU_TimerMap.stop(msg)` соответствует ~3 арифметическим
-# операциям.
 #
 # Плата за удобство организации таймеров минимальная -
 # можно пользоваться! :-)
