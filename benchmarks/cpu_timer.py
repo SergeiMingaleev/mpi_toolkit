@@ -1,11 +1,21 @@
+import time
 import numpy as np
-from mpi4py import MPI
 
+try:
+    # Если `mpi4py` установлен, работаем с его счётчиком времени,
+    # он чуть быстрее (примерно на 30%) на платформе Windows:
+    from mpi4py import MPI
+    get_time_now = MPI.Wtime
+except ModuleNotFoundError:
+    # Иначе работаем с `time.perf_counter`, который является самым
+    # быстрым и точным из стандартных счётчиков времени Python:
+    MPI = None
+    get_time_now = time.perf_counter
 
 #------------------------------------------------------------------
-class CPU_Timer:
+class StopwatchTimer:
     """
-    CPU_Timer class for benchmarking performance of
+    StopwatchTimer class for benchmarking performance of
     the selected parts of the code. The time is
     shown in seconds assuming a 1 GHz CPU speed and
     should be more or less the same when executing
@@ -14,131 +24,214 @@ class CPU_Timer:
     because it shows a full execution time (not the
     CPU time used for this particular problem).
 
-    NOTE: the CPU_Timer can be reliably used for only
+    NOTE: the StopwatchTimer can be reliably used for only
     benchmarking of rather slow subroutines (whose
     execution time exceeds few mksec).
 
     USAGE:
-        timer = CPU_Timer()
+        timer = StopwatchTimer()
         timer.start()
         .............
         timer.stop()
 
-        timer.show("code_name")
-        time = timer.time()
+        dt = timer.duration()
 
-        timer.restart()
+        timer.print_status()
+
+        timer.reset()
     """
     def __init__(self):
-        self._time_sum = 0.0
-        self._time_start = MPI.Wtime()
         self._timer_switched_on = False
+        self._time_start = None
+        self._duration = 0.0
+        self._ncalls = 0
+
+    def reset(self):
+        """
+        Обнулить и выключить таймер.
+        """
+        self.__init__()
 
     def start(self):
+        """
+        Включить таймер (если он был выключен)
+        и увеличить счётчик вызовов таймера на единицу.
+        """
+        self._ncalls += 1
         if not self._timer_switched_on:
-            self._time_start = MPI.Wtime()
+            self._time_start = get_time_now()
             self._timer_switched_on = True
 
-    def restart(self):
-        self._time_sum = 0.0
-        self._time_start = MPI.Wtime()
-        self._timer_switched_on = True
-
     def stop(self):
+        """
+        Выключить таймер (если он был включён).
+        """
         if self._timer_switched_on:
-            t_stop = MPI.Wtime()
-            self._time_sum += t_stop - self._time_start
+            t_stop = get_time_now()
+            self._duration += t_stop - self._time_start
             self._timer_switched_on = False
 
-    def time(self):
+    @property
+    def ncalls(self):
+        """
+        Число включений таймера (то есть, число вызовов метода `start()`).
+
+        :return: (int) Число вызовов.
+        """
+        return self._ncalls
+
+    def duration(self):
+        """
+        Полное время работы таймера.
+
+        :return: (float) Время в секундах.
+        """
         time_add = 0.0
         if self._timer_switched_on:
-            time_add = MPI.Wtime() - self._time_start
-        return self._time_sum + time_add
+            time_add = get_time_now() - self._time_start
+        return self._duration + time_add
 
-    def show(self, info):
-        print(f"Elapsed time for '{info}': {self.time()} sec.")
+    def print_status(self):
+        """
+        Напечатать информацию о текущем состоянии таймера.
+        """
+        t = 1e3 * self.duration()
+        N = self.ncalls
+        print(f"Elapsed time: {t:10,.4f} ms "
+              f"({N} calls == {t / N:11,.5f} ms/call)")
 
 
 #------------------------------------------------------------------
-class CPU_TimerMap:
+class BenchmarkTimer:
     """
-    CPU_TimerMap class for flexible benchmarking
+    BenchmarkTimer class for flexible benchmarking
     of the performance of different frequently used
     subroutines.
 
-    This class is based on the CPU_Timer class - look at its
+    This class is based on the StopwatchTimer class - look at its
     code for more detailed comments on the performance.
 
     USAGE:
-        GlobalTimer = CPU_TimerMap() # this class should usually
-                                     # be used as a global timer.
-        GlobalTimer.start("id")
+        timer = BenchmarkTimer() # this class should usually
+                                 # be used as a global timer.
+        timer.start("tag")
         .................
-        GlobalTimer.stop("id")
+        timer.stop("tag")
 
-        GlobalTimer.show("id")
-        time_id = GlobalTimer.time("id")
+        timer.is_active = False / True
+        time_tag = timer.duration("tag")
+        timer.reset("tag")
 
-        GlobalTimer.restart("id")
-
-        GlobalTimer.show()  # show a summary for all timers.
+        timer.print_status()
     """
     def __init__(self, comm=None):
-        if comm is None:
-            comm = MPI.COMM_WORLD
-        self._comm = comm
-        self._P = comm.Get_size()
-        self._rank = comm.Get_rank()
+        if MPI is None:
+            self._comm = self._P = self._rank = None
+        else:
+            if comm is None:
+                comm = MPI.COMM_WORLD
+            self._comm = comm
+            self._P = comm.Get_size()
+            self._rank = comm.Get_rank()
 
-        self._timer = dict()  # key: str, value: CPU_Timer
-        self._number_of_calls = dict()  # key: str, value: int
+        self._timers = dict()  # key: str, value: StopwatchTimer
+        self._disabled = False
 
-    def add(self, id):
-        self._timer[id] = CPU_Timer()
-        self._number_of_calls[id] = 0
+    @property
+    def is_active(self):
+        """
+        Флаг, определяющий, является ли таймер активным.
+        В неактивном состоянии вызовы всех методов класса
+        будут молча игнорироваться, с минимальным влиянием
+        на скорость выполнения программы.
 
-    def start(self, id):
-        if not id in self._timer:
-            self._timer[id] = CPU_Timer()
-            self._number_of_calls[id] = 0
-        self._timer[id].start()
-        self._number_of_calls[id] += 1
+        :getter: Возвращает значение, является ли таймер
+                 активным.
+        :setter: Устанавливает состояние активности таймера.
 
-    def start_fast(self, id):
-        self._timer[id].start()
-        self._number_of_calls[id] += 1
+        :type: bool
+        """
+        return not self._disabled
 
-    def restart(self, id):
-        self._timer[id].restart()
-        self._number_of_calls[id] = 1
+    @is_active.setter
+    def is_active(self, value):
+        self._disabled = not bool(value)
 
-    def stop(self, id):
-        self._timer[id].stop()
+    def reset(self, tag=None):
+        """
+        Обнуляет таймер для указанного `tag`.
+        Вызов метода без параметров удалит все
+        созданные таймеры и их накопленные данные.
+        """
+        if self._disabled:
+            return
+        if tag is None:
+            self.__init__(comm=self._comm)
+        else:
+            self._timers[tag].reset()
 
-    def time(self, id):
-        return self._timer[id].time()
+    def start(self, tag):
+        """
+        Запустить таймер с указанным ярлыком.
+        При запуске будет произведена проверка, существует ли уже
+        таймер с указанным ярлыком - и если нет, то он будет создан.
 
-    def show(self, id = None):
-        if id is not None:
-            self._timer[id].show(id)
+        :param tag: (str) Ярлык запускаемого таймера.
+        """
+        if self._disabled:
+            return
+        if tag not in self._timers:
+            self._timers[tag] = StopwatchTimer()
+        self._timers[tag].start()
 
-        sorted_by_time = dict(sorted(self._timer.items(),
-                                     key=lambda item: item[1].time(),
+    def stop(self, tag):
+        """
+        Остановить (поставить на паузу) таймер с указанным ярлыком.
+        При запуске будет произведена проверка, существует ли уже
+        таймер с указанным ярлыком - и если нет, То он будет создан.
+        Альтернативный более быстрый запуск таймера (но без проверки)
+        доступен через метод `start_fast(tag)`.
+        :param tag: (str) Ярлык запускаемого таймера.
+        """
+        if self._disabled:
+            return
+        self._timers[tag].stop()
+
+    def duration(self, tag):
+        """
+
+        :param tag: (str) Ярлык добавляемого таймера.
+        :return:
+        """
+        if self._disabled:
+            return 0.0
+        return self._timers[tag].duration()
+
+    def print_status(self):
+        """
+        Напечатать информацию о текущем состоянии таймера.
+        """
+        if self._disabled:
+            return
+        sorted_by_time = dict(sorted(self._timers.items(),
+                                     key=lambda item: item[1].duration(),
                                      reverse=True))
 
-        max_time_ms = 1e3 * np.max([item.time() for item in self._timer.values()])
-        id_max_len = np.max(list(map(len, self._timer.keys())))
-        pp = f"[{self._rank}/{self._P}]"
+        max_time_ms = 1e3 * np.max([item.duration() for item in self._timers.values()])
+        tag_max_len = np.max(list(map(len, self._timers.keys())))
+        if self._P is None:
+            pp = ""
+        else:
+            pp = f"[{self._rank}/{self._P}]"
 
-        print(f"{pp} ============================= CPU_Timer Summary: ===============================")
-        for id in sorted_by_time:
-            t = 1e3 * sorted_by_time[id].time() # ms
-            N = self._number_of_calls[id]
+        print(f"{pp} ============================= BenchmarkTimer Summary: ===============================")
+        for tag in sorted_by_time:
+            t = 1e3 * sorted_by_time[tag].duration() # ms
+            N = sorted_by_time[tag]._ncalls
 
             print(f"{pp} {t:10,.4f} ms "
-                  f"({100 * t / max_time_ms:7,.3f} %)"
-                  f" -- {id.ljust(id_max_len)} "
+                  f"({100 * t / max_time_ms:7,.3f} %): "
+                  f"{tag.ljust(tag_max_len)} "
                   f"-- {N:6} calls == "
                   f"{t / N:11,.5f} ms/call")
         print(f"{pp} ================================================================================")
