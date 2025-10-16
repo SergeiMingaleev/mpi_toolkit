@@ -1,9 +1,22 @@
 from mpi4py import MPI
 import numpy as np
 
-comm = MPI.COMM_WORLD
-numprocs = comm.Get_size()
-rank = comm.Get_rank()
+
+def auxiliary_arrays_determination(M, num):
+    ave, res = divmod(M, num)
+    rcounts = np.empty(num, dtype=np.int32)
+    displs = np.empty(num, dtype=np.int32)
+    for k in range(0, num):
+        if k < res:
+            rcounts[k] = ave + 1
+        else:
+            rcounts[k] = ave
+        if k == 0:
+            displs[k] = 0
+        else:
+            displs[k] = displs[k-1] + rcounts[k-1]   
+    return rcounts, displs
+
 
 def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part, 
                               N, comm, comm_row, comm_col, rank):
@@ -69,6 +82,11 @@ def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part,
     
     return x_part
 
+
+comm = MPI.COMM_WORLD
+numprocs = comm.Get_size()
+rank = comm.Get_rank()
+
 if rank == 0:
     with open('Example-03_in.dat', 'r') as f1:
         M = np.array(np.int32(f1.readline()))
@@ -79,21 +97,6 @@ else:
 comm.Bcast([N, 1, MPI.INT], root=0)
 
 num_col = num_row = np.int32(np.sqrt(numprocs))
-
-def auxiliary_arrays_determination(M, num):
-    ave, res = divmod(M, num)
-    rcounts = np.empty(num, dtype=np.int32)
-    displs = np.empty(num, dtype=np.int32)
-    for k in range(0, num):
-        if k < res:
-            rcounts[k] = ave + 1
-        else:
-            rcounts[k] = ave
-        if k == 0:
-            displs[k] = 0
-        else:
-            displs[k] = displs[k-1] + rcounts[k-1]   
-    return rcounts, displs
 
 if rank == 0:
     rcounts_M, displs_M = auxiliary_arrays_determination(M, num_row)
