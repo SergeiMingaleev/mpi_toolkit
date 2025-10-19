@@ -15,6 +15,7 @@ rank_cart = comm_cart.Get_rank()
 
 def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part, 
                               N, comm_cart, num_row, num_col) :
+    alpha = 1e-11
     
     neighbour_up, neighbour_down = comm_cart.Shift(direction=0, disp=1)
     neighbour_left, neighbour_right = comm_cart.Shift(direction=1, disp=1)
@@ -37,7 +38,7 @@ def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part,
                                            status=None)
                 Ax_part = Ax_part + Ax_part_temp
             b_part = Ax_part - b_part  
-            r_part_temp = dot(A_part.T, b_part)
+            r_part_temp = dot(A_part.T, b_part) + alpha*x_part
             r_part = r_part_temp.copy()
             for m in range(num_row-1) :
                 comm_cart.Sendrecv_replace([r_part_temp, N_part, MPI.DOUBLE], 
@@ -74,7 +75,7 @@ def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part,
                                        source=neighbour_left, recvtag=MPI.ANY_TAG, 
                                        status=None)
             Ap_part = Ap_part + Ap_part_temp
-        q_part_temp = dot(A_part.T, Ap_part)
+        q_part_temp = dot(A_part.T, Ap_part) + alpha*p_part
         q_part = q_part_temp.copy()
         for m in range(num_row-1) :
             comm_cart.Sendrecv_replace([q_part_temp, N_part, MPI.DOUBLE], 
