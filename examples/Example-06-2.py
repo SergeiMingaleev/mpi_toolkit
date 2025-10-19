@@ -15,7 +15,7 @@ rank_cart = comm_cart.Get_rank()
 
 def conjugate_gradient_method(A_part, b_part, x_part, N_part, M_part, 
                               N, comm_cart, num_row, num_col) :
-    alpha = 1e-11
+    alpha = 0.0 / num_row
     
     neighbour_up, neighbour_down = comm_cart.Shift(direction=0, disp=1)
     neighbour_left, neighbour_right = comm_cart.Shift(direction=1, disp=1)
