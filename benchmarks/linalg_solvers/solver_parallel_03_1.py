@@ -217,6 +217,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
     dot_vec_temp = np.empty(1, dtype=np.float64)
     mpi_timer.stop('conj step 0: prepare data')
 
+    alpha = 5e-12
     # Цикл по итерациям s от 1 до N включительно:
     for s in range(1, N + 1):
         #------------------------------------------------------------
@@ -238,7 +239,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
             # Теперь на каждом процессе мы можем собрать частично
             # просуммированный полный вектор `r` с размером N, поместив
             # эту часть в локальный для каждого процесса вектор `r_temp`:
-            r_temp = np.dot(A_part.T, np.dot(A_part, x) - b_part)
+            r_temp = np.dot(A_part.T, np.dot(A_part, x) - b_part) + alpha*x
 
             # и затем командой `comm.Reduce_scatter` просуммировать
             # (префикс `Reduce`!) все `r_temp` на всех процессах, получив
@@ -316,7 +317,9 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # На каждом процессе мы можем собрать частично просуммированный
         # полный вектор `q` с размером N, поместив эту часть в локальный
         # для каждого процесса вектор `q_temp`:
-        q_temp = np.dot(A_part.T, np.dot(A_part, p))
+        #q_temp = np.dot(A_part.T, np.dot(A_part, p))
+        
+        q_temp = np.dot(A_part.T, np.dot(A_part, p)) + alpha*p
 
         # и затем командой `comm.Reduce_scatter` просуммировать
         # (префикс `Reduce`!) все `q_temp` на всех процессах, получив
@@ -374,7 +377,6 @@ if __name__ == '__main__':
     #------------------------------------------------------------------
     # Первым делом, настроим MPI:
     #------------------------------------------------------------------
-    mpi_timer.start('ALL')
 
     # Работаем с коммуникатором по всем доступным процессам:
     comm = MPI.COMM_WORLD
@@ -384,6 +386,8 @@ if __name__ == '__main__':
 
     # Номер текущего процесса (от 0 до P-1):
     rank = comm.Get_rank()
+
+    mpi_timer.start('ALL')
 
     #------------------------------------------------------------------
     # Шаг 0:
@@ -489,8 +493,23 @@ if __name__ == '__main__':
         # а по кусочкам - сразу отдавая каждый кусочек своему
         # "рабочему" процессу (на процессе 0 при этом данных
         # матрицы `A` совсем не останется - экономим память!):
-        np.random.seed(71)
-        A = np.random.rand(M, N)
+        #np.random.seed(71)
+        #A = np.random.rand(M, N)
+        A = hilb(N, M)
+        print(A.shape)
+        print(A)
+        
+        #I = np.where(A < 0.001)
+        #print(I)
+        #A[I] *= 100
+        #I = np.where(A < 1e-9)
+        #print(I)
+        #A[I] = 0.01
+        print(f"np.min(A) = {np.min(A)}")
+        print(f"np.max(A) = {np.max(A)}")
+        print(f"A[10,10] = {A[10,10]}")
+        print(f"A[100,100] = {A[100,100]}")
+        
         mpi_timer.start('Step 3: pass A')
         for m in range(1, P):
             # Кусочек матрицы `A`, который мы отдадим процессу `m`:
@@ -515,7 +534,8 @@ if __name__ == '__main__':
     if rank == 0:
         # Создадим вектор `b` на процессе 0:
         t = np.arange(1, N + 1) / (N + 1)
-        x = np.sin(2 * np.pi * t)
+        x0 = np.sin(2 * np.pi * t)
+        x = x0.copy()
         b = np.dot(A, x)
     else:
         # На "рабочих" процессах вектор `b` используется
@@ -600,7 +620,12 @@ if __name__ == '__main__':
 
     if rank == 0:
         # Для контроля, напечатаем найденное решение на консоли:
-        print(f"\nFinal solution:\nx = {x}")
+        print(f"\nFinal solution:\n   x = {x}")
+        print(f"Error is:")
+        print(f"    dx = {x-x0}")
+        print(f"   |dx|^2 = {np.dot(x0-x, x0-x)}")
+        print(f"   |x0|^2 = {np.dot(x0, x0)}")
+        print(f"    |x|^2 = {np.dot(x, x)}")
 
         # Подготовим рисунок и данные для него:
         import matplotlib.pyplot as plt
