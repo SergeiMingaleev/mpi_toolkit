@@ -2,12 +2,13 @@
 # Демонстрация использования самодельного класса `BenchmarkTimer`
 # и проверка скорости его работы.
 #
-# Описание работы класса смотри в файле "cpu_timer.py"
+# Описание работы класса смотри в файле
+# mpi_toolkit/benchmarks/linalg_solvers/cpu_timer.py
 # с реализацией этого класса.
 #------------------------------------------------------------------
 
 from mpi4py import MPI
-from cpu_timer import BenchmarkTimer
+from linalg_solvers import BenchmarkTimer
 
 N = 1_000_000
 

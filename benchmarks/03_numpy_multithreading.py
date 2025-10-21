@@ -30,11 +30,12 @@ os.environ['VECLIB_MAXIMUM_THREADS'] = N_THREADS
 os.environ['NUMEXPR_NUM_THREADS'] = N_THREADS
 
 import numpy as np
-from cpu_timer import BenchmarkTimer
-timer = BenchmarkTimer()
+# import cupy as np
+from linalg_solvers import BenchmarkTimer
+
 
 # Размер матриц будет NxN:
-N = 5000
+N = 3500
 
 # Сделаем две случайные матрицы с размером NxN:
 np.random.seed(17)
@@ -42,6 +43,8 @@ data1 = np.random.rand(N, N)
 data2 = np.random.rand(N, N)
 
 # Проверим скорость перемножения матриц:
+
+timer = BenchmarkTimer()
 
 timer.start('dot')
 result = data1.dot(data2)
