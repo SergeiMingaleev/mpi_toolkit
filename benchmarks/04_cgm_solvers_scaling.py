@@ -9,6 +9,7 @@ from mpi4py import MPI
 from linalg_solvers import matrix_TridiagThermal, matrix_Hilbert
 from linalg_solvers import SolverSequential
 from linalg_solvers import SolverParallelBand1
+from linalg_solvers import SolverParallelBand2
 
 
 # =============================================================================
@@ -104,7 +105,8 @@ if __name__ == '__main__':
         is_symmetric = True
 
         # solver = SolverSequential(numpy_lib=np)
-        solver = SolverParallelBand1(numpy_lib=np)
+        # solver = SolverParallelBand1(numpy_lib=np)
+        solver = SolverParallelBand2(numpy_lib=np)
 
         x = solver.calc(A, b, x, is_symmetric, alpha, verbose, skip_init_time)
 

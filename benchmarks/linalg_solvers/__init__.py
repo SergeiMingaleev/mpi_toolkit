@@ -2,3 +2,4 @@ from .cpu_timer import StopwatchTimer, BenchmarkTimer
 from .special_matrices import matrix_Hilbert, matrix_TridiagThermal
 from .solver_sequential import SolverSequential
 from .solver_parallel_03_1 import SolverParallelBand1
+from .solver_parallel_03_2 import SolverParallelBand2

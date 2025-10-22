@@ -11,7 +11,6 @@
 # mpi_toolkit/examples/Example-03-1.py
 # ------------------------------------------------------------------
 
-# import numpy as np
 from mpi4py import MPI
 
 from .cpu_timer import BenchmarkTimer
@@ -21,7 +20,7 @@ from .solver_base import SolverBase
 # =============================================================================
 class SolverParallelBand1(SolverBase):
     """
-    Решалка, реализующая последовательное решение системы
+    Решалка, реализующая параллельное решение системы
     линейных уравнений `A*x = b` методом сопряжённых градиентов.
 
     :param numpy_lib: Ссылка на библиотеку `numpy`, которую
