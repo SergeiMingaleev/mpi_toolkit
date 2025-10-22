@@ -10,7 +10,7 @@ from linalg_solvers import matrix_TridiagThermal, matrix_Hilbert
 from linalg_solvers import SolverSequential
 from linalg_solvers import SolverParallelBand1
 from linalg_solvers import SolverParallelBand2
-
+from linalg_solvers import SolverParallelBlock1
 
 # =============================================================================
 def plot_solution(x):
@@ -101,12 +101,13 @@ if __name__ == '__main__':
         verbose = False
         skip_init_time = True
         alpha = 0.0
-        # alpha = 1.0e-12
-        is_symmetric = True
+        alpha = 1.0e-12
+        is_symmetric = False
 
         # solver = SolverSequential(numpy_lib=np)
         # solver = SolverParallelBand1(numpy_lib=np)
-        solver = SolverParallelBand2(numpy_lib=np)
+        # solver = SolverParallelBand2(numpy_lib=np)
+        solver = SolverParallelBlock1(numpy_lib=np)
 
         x = solver.calc(A, b, x, is_symmetric, alpha, verbose, skip_init_time)
 
