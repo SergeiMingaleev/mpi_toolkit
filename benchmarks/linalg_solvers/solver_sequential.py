@@ -44,8 +44,14 @@ class SolverSequential(SolverBase):
         :return: Приближённое (или точное, для квадратной матрицы) решение
                  системы уравнений в виде полного вектора `x`.
         """
+        if self._rank != 0:
+            return None
+
+        if self._skip_init_time:
+            self._timer_calc.start()
+
         np = self._numpy_lib
-        M, N = self._M, self._N
+        M, N = A.shape
 
         timer = BenchmarkTimer()
         timer.is_active = self._verbose

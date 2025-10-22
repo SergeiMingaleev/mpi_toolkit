@@ -6,6 +6,7 @@
 # Базовый класс.
 # ------------------------------------------------------------------
 
+from mpi4py import MPI
 from .cpu_timer import StopwatchTimer
 
 
@@ -19,13 +20,20 @@ class SolverBase:
         if numpy_lib is None:
             import numpy as numpy_lib
         self._numpy_lib = numpy_lib
+
+        # Настроим MPI:
+        self._comm = MPI.COMM_WORLD
+        self._P = self._comm.Get_size()
+        self._rank = self._comm.Get_rank()
+
         self._verbose = False
         self._duration = None
         self._M = self._N = None
         self._is_symmetric = False
         self._alpha = 0.0
 
-    def calc(self, A, b, x, is_symmetric=False, alpha=0.0, verbose=False):
+    def calc(self, A, b, x, is_symmetric=False, alpha=0.0,
+             verbose=False, skip_init_time=True):
         """
         Решает заданную систему линейных уравнений A*x = b
         методом сопряжённых градиентов.
@@ -44,18 +52,19 @@ class SolverBase:
 
         :return: Решение - вектор `x`.
         """
-        self._M, self._N = A.shape
+        self._M = self._N = None
+        if self._rank == 0:
+            self._M, self._N = A.shape
         self._is_symmetric = is_symmetric
         self._alpha = alpha
         self._verbose = verbose
-
-        self._initialize_data(A, b, x)
-
-        timer = StopwatchTimer()
-        timer.start()
+        self._skip_init_time = skip_init_time
+        self._timer_calc = StopwatchTimer()
+        if not self._skip_init_time:
+            self._timer_calc.start()
         x = self._conjugate_gradient_method(A, b, x)
-        timer.stop()
-        self._duration = timer.duration()
+        self._timer_calc.stop()
+        self._duration = self._timer_calc.duration()
 
         return x
 
@@ -172,9 +181,6 @@ class SolverBase:
             # строк, хранимых в процессе:
             displs[m] = displs[m - 1] + rcounts[m - 1]
         return rcounts, displs
-
-    def _initialize_data(self, A, b, x):
-        pass
 
     def _conjugate_gradient_method(self, A, b, x):
         raise NotImplementedError()

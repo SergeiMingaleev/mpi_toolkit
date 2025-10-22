@@ -8,6 +8,7 @@ from mpi4py import MPI
 
 from linalg_solvers import matrix_TridiagThermal, matrix_Hilbert
 from linalg_solvers import SolverSequential
+from linalg_solvers import SolverParallelBand1
 
 
 # =============================================================================
@@ -48,7 +49,7 @@ def list_of_MN_case1():
 # =============================================================================
 def list_of_MN_case2():
     M_list = [100, 200, 300, 400, 500,
-              1000, 2000, 3000, 4000, 5000]
+              1000, 2000, 3000]
     for M in M_list:
         yield M, M
 
@@ -79,10 +80,10 @@ if __name__ == '__main__':
             # A = np.random.rand(M, N)
 
             # Плохо обусловленная матрица:
-            A = matrix_Hilbert(M, N, numpy_lib=np)
+            # A = matrix_Hilbert(M, N, numpy_lib=np)
 
             # Хорошо (?) обусловленная матрица:
-            # A = matrix_TridiagThermal(M, N, numpy_lib=np)
+            A = matrix_TridiagThermal(M, N, numpy_lib=np)
 
             # Создадим вектор `x` на процессе 0:
             t = np.arange(N) / N
@@ -97,13 +98,15 @@ if __name__ == '__main__':
         #------------------------------------------------------------------
         # Решаем СЛАУ на всех процессах:
         verbose = False
+        skip_init_time = True
         alpha = 0.0
         # alpha = 1.0e-12
         is_symmetric = True
 
-        solver = SolverSequential(numpy_lib=np)
+        # solver = SolverSequential(numpy_lib=np)
+        solver = SolverParallelBand1(numpy_lib=np)
 
-        x = solver.calc(A, b, x, is_symmetric, alpha, verbose)
+        x = solver.calc(A, b, x, is_symmetric, alpha, verbose, skip_init_time)
 
         # ------------------------------------------------------------------
         # Вывод результатов снова только на процессе 0:
