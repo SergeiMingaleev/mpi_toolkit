@@ -498,7 +498,13 @@ class SolverParallelBlock1(SolverBase):
             for m in range(num_row):
                 # Зачитаем сначала всю строку блоков `m` и поместим
                 # её во временный массив `A_row_m`:
-                A_row_m = A[displs_M[m]:displs_M[m]+rcounts_M[m], :].flatten()
+                A_row_m = np.empty(rcounts_M[m]*N, dtype=np.float64)
+                # Цикл по столбцам блоков матрицы `A`:
+                for n in range(num_col):
+                    A_row_m[rcounts_M[m]*displs_N[n]:
+                            rcounts_M[m]*displs_N[n]+rcounts_M[m]*rcounts_N[n]] = \
+                        A[displs_M[m]:displs_M[m] + rcounts_M[m],
+                          displs_N[n]:displs_N[n] + rcounts_N[n]].flatten()
                 # Разбросаем эту строку блоков по отдельным процессам,
                 # входящим в эту строку сетки процессов.
                 if m == 0:
@@ -625,6 +631,7 @@ class SolverParallelBlock1(SolverBase):
         if self._skip_init_time:
             self._timer_calc.start()
 
+        self._timer.start('conj_grad_method')
         x_part = self._cgm_mpi_part(A_part, b_part, x_part, N_part, M_part,
                                     N, comm_row, comm_col, rank)
 
@@ -639,6 +646,10 @@ class SolverParallelBlock1(SolverBase):
         if rank in procs_first_row:
             comm_row.Gatherv([x_part, N_part, MPI.DOUBLE],
                              [x, rcounts_N, displs_N, MPI.DOUBLE], root=0)
+
+        self._timer.stop('conj_grad_method')
+        self._timer.stop('ALL')
+
         return x
 
 # =============================================================================
