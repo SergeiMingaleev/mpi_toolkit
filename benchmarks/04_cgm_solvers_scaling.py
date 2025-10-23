@@ -11,6 +11,7 @@ from linalg_solvers import SolverSequential
 from linalg_solvers import SolverParallelBand1
 from linalg_solvers import SolverParallelBand2
 from linalg_solvers import SolverParallelBlock1
+from linalg_solvers import SolverParallelBlock2
 
 # =============================================================================
 def plot_solution(x):
@@ -50,7 +51,7 @@ def list_of_MN_case1():
 # =============================================================================
 def list_of_MN_case2():
     M_list = [100, 200, 300, 400, 500,
-              1000, 2000, 3000]
+              1000, 2000] #, 3000, 4000]
     for M in M_list:
         yield M, M
 
@@ -65,10 +66,29 @@ if __name__ == '__main__':
     P = comm.Get_size()
     rank = comm.Get_rank()
 
-    # Заглушки для всех процессов (кроме процесса 0 ниже):
-    A = b = x = x0 = None
+
+    verbose = False
+    skip_init_time = False
+    alpha = 0.0
+    # alpha = 1.0e-13
+    is_symmetric = False
+
+    # solver = SolverSequential(numpy_lib=np)
+    # solver = SolverParallelBand1(numpy_lib=np)
+    # solver = SolverParallelBand2(numpy_lib=np)
+    # solver = SolverParallelBlock1(numpy_lib=np)
+    solver = SolverParallelBlock2(numpy_lib=np)
+
 
     if rank == 0:
+        print("="*80)
+        print(f"SOLVER:  {type(solver)}")
+        print(f"MATRIX:  matrix_TridiagThermal")
+        # print("="*80)
+        print(f"is_symmetric = {is_symmetric}")
+        print(f"alpha = {alpha}")
+        print(f"skip_init_time = {skip_init_time}")
+        print("="*80)
         print("  N\t     M\t\t Time(sec)\t GFlops\t Error")
 
     # Цикл по размерам (M, N) матрицы A:
@@ -95,20 +115,12 @@ if __name__ == '__main__':
 
             # Начальное приближение для `x`:
             x = np.zeros(N, dtype=np.float64)
+        else:
+            # Заглушки для всех остальных процессов:
+            A = b = x = x0 = None
 
         #------------------------------------------------------------------
         # Решаем СЛАУ на всех процессах:
-        verbose = False
-        skip_init_time = True
-        alpha = 0.0
-        alpha = 1.0e-12
-        is_symmetric = False
-
-        # solver = SolverSequential(numpy_lib=np)
-        # solver = SolverParallelBand1(numpy_lib=np)
-        # solver = SolverParallelBand2(numpy_lib=np)
-        solver = SolverParallelBlock1(numpy_lib=np)
-
         x = solver.calc(A, b, x, is_symmetric, alpha, verbose, skip_init_time)
 
         # ------------------------------------------------------------------
@@ -131,5 +143,7 @@ if __name__ == '__main__':
             # print(f"   |x0|^2 = {np.dot(x0, x0)}")
             # print(f"    |x|^2 = {np.dot(x, x)}")
             # plot_solution(x)
+    if rank == 0:
+        print("="*80)
 
 # =============================================================================

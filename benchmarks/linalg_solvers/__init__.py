@@ -4,3 +4,4 @@ from .solver_sequential import SolverSequential
 from .solver_parallel_03_1 import SolverParallelBand1
 from .solver_parallel_03_2 import SolverParallelBand2
 from .solver_parallel_05_1 import SolverParallelBlock1
+from .solver_parallel_06_1 import SolverParallelBlock2
