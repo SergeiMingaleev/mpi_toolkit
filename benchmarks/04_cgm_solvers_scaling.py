@@ -12,6 +12,7 @@ from linalg_solvers import SolverParallelBand1
 from linalg_solvers import SolverParallelBand2
 from linalg_solvers import SolverParallelBlock1
 from linalg_solvers import SolverParallelBlock2
+from linalg_solvers import SolverParallelBlock3
 
 # =============================================================================
 def plot_solution(x):
@@ -77,8 +78,8 @@ if __name__ == '__main__':
     # solver = SolverParallelBand1(numpy_lib=np)
     # solver = SolverParallelBand2(numpy_lib=np)
     # solver = SolverParallelBlock1(numpy_lib=np)
-    solver = SolverParallelBlock2(numpy_lib=np)
-
+    # solver = SolverParallelBlock2(numpy_lib=np)
+    solver = SolverParallelBlock3(numpy_lib=np)
 
     if rank == 0:
         print("="*80)
