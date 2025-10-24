@@ -54,24 +54,29 @@ def consecutive_tridiagonal_matrix_algorithm(a, b, c, d):
     """
     Реализация последовательного метода прогонки для решения
     системы линейных уравнений A*x = d с трёхдиагональной
-    матрицей `A`.
+    матрицей `A`. Детали алгоритма описаны на странице:
+    https://ru.wikipedia.org/wiki/Метод_прогонки
+    Такая реализация метода прогонки требует `8*N-7`
+    арифметических операций.
 
-    :param a: Вектор, задающий верхнюю диагональ матрицы `A`.
+    :param a: Вектор, задающий нижнюю кодиагональ матрицы `A`.
     :param b: Вектор, задающий главную диагональ матрицы `A`.
-    :param c: Вектор, задающий нижнюю диагональ матрицы `A`.
-    :param d: Вектор `d`.
+    :param c: Вектор, задающий верхнюю кодиагональ матрицы `A`.
+    :param d: Вектор `d`, задающий правую часть уравнения.
     :return: Вектор решения `x`.
     """
     N = len(d)
     x = np.empty(N, dtype=datatype)
 
+    # Прямой ход метода прогонки (зануляем нижнюю кодиагональ `a`):
     for n in range(1, N):
         coef = a[n] / b[n-1]
-        b[n] = b[n] - coef * c[n-1]
-        d[n] = d[n] - coef * d[n-1]
+        b[n] -= coef * c[n-1]
+        d[n] -= coef * d[n-1]
 
+    # Обратный ход метода прогонки (находим `x`, эффективно зануляя
+    # верхнюю кодиагональ `c`):
     x[N-1] = d[N-1] / b[N-1]
-
     for n in range(N-2, -1, -1):
         x[n] = (d[n] - c[n] * x[n+1])/b[n]
 
@@ -85,29 +90,53 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     системы линейных уравнений A*x = d с трёхдиагональной
     матрицей `A`.
 
-    :param a_part: Кусочек вектора, задающий верхнюю диагональ матрицы `A`.
+    :param a_part: Кусочек вектора, задающий нижнюю кодиагональ матрицы `A`.
     :param b_part: Кусочек вектора, задающий главную диагональ матрицы `A`.
-    :param c_part: Кусочек вектора, задающий нижнюю диагональ матрицы `A`.
-    :param d_part: Кусочек вектора `d`.
+    :param c_part: Кусочек вектора, задающий верхнюю кодиагональ матрицы `A`.
+    :param d_part: Кусочек вектора `d`, задающий правую часть уравнения.
     :return: Кусочек вектора решения `x`.
     """
     N_part = len(d_part)
 
+    # Прямой ход метода прогонки (зануляем нижнюю
+    # кодиагональ `a_part`, кроме колонки элементов для `n=0`,
+    # которую мы всю записываем обратно в вектор `a_part`
+    # для экономии памяти):
     for n in range(1, N_part):
-        coef = a_part[n]/b_part[n-1]
-        a_part[n] = -coef*a_part[n-1]
-        b_part[n] = b_part[n] - coef*c_part[n-1]
-        d_part[n] = d_part[n] - coef*d_part[n-1]
+        coef = a_part[n] / b_part[n-1]
+        a_part[n] = -coef * a_part[n-1]
+        b_part[n] -= coef * c_part[n-1]
+        d_part[n] -= coef * d_part[n-1]
 
+    # Обратный ход метода прогонки (зануляем верхнюю
+    # кодиагональ `c_part`, кроме колонки элементов для
+    # `n=N_part-1`, которую мы всю записываем обратно
+    # в вектор `с_part` для экономии памяти).
+    # При этом ненулевые элементы в `a_part`,
+    # соответствующие колонке n=0, изменятся ещё раз:
     for n in range(N_part-3, -1, -1):
-        coef = c_part[n]/b_part[n+1]
-        c_part[n] = -coef*c_part[n+1]
-        a_part[n] = a_part[n] - coef*a_part[n+1]
-        d_part[n] = d_part[n] - coef*d_part[n+1]
+        coef = c_part[n] / b_part[n+1]
+        c_part[n] = -coef * c_part[n+1]
+        a_part[n] -= coef * a_part[n+1]
+        d_part[n] -= coef * d_part[n+1]
+
+    # На этом этапе у нас остаются (на каждом процессе)
+    # ненулевыми элементы на главной диагонали (их значения
+    # расположены в векторе `b_part`), в колонке `n=0`
+    # (их значения расположены в векторе `a_part`), и в
+    # колонке `n=N_part-1` (их значения расположены
+    # в векторе `c_part[:-1]`). Наконец, на каждом процессе,
+    # кроме последнего, остаётся ещё один ненулевой элемент
+    # `c_part[-1]`, расположенный в самом низу колонки `n=N_part`.
+    # От этого последнего элемента хочется избавиться в первую
+    # очередь - но для этого каждый процесс (кроме первого)
+    # должен послать элементы своей нулевой строки вышестоящему
+    # процессу (https://youtu.be/CrqeCy-dZQI?t=1499):
 
     if rank > 0:
         temp_array_send = np.array([a_part[0], b_part[0],
-                                          c_part[0], d_part[0]], dtype=datatype)
+                                    c_part[0], d_part[0]],
+                                   dtype=datatype)
     if rank < P-1:
         temp_array_recv = np.empty(4, dtype=datatype)
 
@@ -122,14 +151,34 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     if rank == P-1:
         comm.Send([temp_array_send, 4, MPI_datatype], dest=P-2, tag=0)
 
+    # Теперь мы готовы обнулить этот ненулевой элемент
+    # `c_part[-1]` (что требуется на каждом процессе, кроме
+    # последнего):
+
     if rank < P-1:
-        coef = c_part[N_part-1] / temp_array_recv[1]
-        b_part[N_part-1] = b_part[N_part-1] - coef*temp_array_recv[0]
-        c_part[N_part-1] = - coef*temp_array_recv[2]
-        d_part[N_part-1] = d_part[N_part-1] - coef*temp_array_recv[3]
+        a_N_part, b_N_part, c_N_part, d_N_part = temp_array_recv
+        coef = c_part[N_part-1] / b_N_part
+        # Последние элементы `b_part` и `d_part` просто обновят
+        # свои значения:
+        b_part[N_part-1] -= coef * a_N_part
+        d_part[N_part-1] -= coef * d_N_part
+        # А последний элемент вектора `c_part` полностью обнулится -
+        # но на его место в памяти мы запишем значение нового
+        # ненулевого элемента, который появится при этом
+        # в колонке `n=N_part` в нумерации следующего процесса
+        # (https://youtu.be/CrqeCy-dZQI?t=1604):
+        c_part[N_part-1] = -coef * c_N_part
+
+    # Важно, что теперь последние элементы векторов `a_part`, `b_part`,
+    # `c_part`, и `d_part` на каждом процессе (включая и последний!)
+    # совместно образуют новую трёхдиагональную матрицу с размером,
+    # равным `P` (что намного меньше изначального `N`!) - соберём
+    # вместе на процессе 0 элементы этой новой матрицы и соответсвующие
+    # им последние элементы вектора `d_part` в массиве `A_extended`:
 
     temp_array_send = np.array([a_part[N_part-1], b_part[N_part-1],
-                             c_part[N_part-1], d_part[N_part-1]], dtype=datatype)
+                                c_part[N_part-1], d_part[N_part-1]],
+                               dtype=datatype)
 
     if rank == 0:
         A_extended = np.empty((P, 4), dtype=datatype)
@@ -139,11 +188,18 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     comm.Gather([temp_array_send, 4, MPI_datatype],
                 [A_extended, 4, MPI_datatype], root=0)
 
+    # И решим это небольшое уравнение на процессе 0, используя
+    # последовательный метод прогонки - это потребует всего
+    # `8*P-7` арифметических операций:
     if rank == 0:
         x_temp = consecutive_tridiagonal_matrix_algorithm(
             A_extended[:,0], A_extended[:,1], A_extended[:,2], A_extended[:,3])
     else:
         x_temp = None
+
+    # Найденное решение делает теперь известными последние элементы
+    # в векторах `x_part` на каждом процессе - отдадим их назад
+    # на соответствующие процессы:
 
     if rank == 0:
         rcounts_temp = np.empty(P, dtype=np.int32)
@@ -166,6 +222,9 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
         comm.Scatterv([x_temp, rcounts_temp, displs_temp, MPI_datatype],
                       [x_part_last, 2, MPI_datatype], root=0)
 
+    # Наконец, зная последние элементы в векторах `x_part`,
+    # мы можем рекурсивно найти и все остальные их элементы,
+    # получив тем самым нужное нам решение:
     x_part = np.empty(N_part, dtype=datatype)
 
     if rank == 0:
@@ -203,6 +262,7 @@ def diagonals_preparation(N_part):
             b[n] = np.random.random_sample()
             c[n] = np.random.random_sample()
     return a, b, c
+
 
 #------------------------------------------------------------------
 def auxiliary_arrays_determination(M, P):
@@ -257,6 +317,7 @@ def auxiliary_arrays_determination(M, P):
             displs[m] = displs[m - 1] + rcounts[m - 1]
     return rcounts, displs
 
+
 #------------------------------------------------------------------
 # Начинаем выполнение программы - первым делом, настроим MPI:
 #------------------------------------------------------------------
@@ -284,7 +345,6 @@ else:
     datatype = np.float64
     MPI_datatype = MPI.DOUBLE
 
-
 # Определяем N - число элементов в векторе `x`:
 N = 10
 
@@ -307,7 +367,8 @@ else:
 N_part = np.array(0, dtype=np.int32)
 displ = np.array(0, dtype=np.int32)
 
-# Разбросаем теперь списоки `rcounts` и `displs` по всем процессам:
+# Разбросаем теперь списоки `rcounts` и `displs` по всем процессам
+# в виде отдельных значений, нужных каждому конкретному процессу:
 comm.Scatter([rcounts, 1, MPI.INT],
              [N_part, 1, MPI.INT], root=0)
 comm.Scatter([displs, 1, MPI.INT],
@@ -316,8 +377,8 @@ comm.Scatter([displs, 1, MPI.INT],
 # Формируем на каждом MPI процессе свои кусочки диагоналей:
 codiagonal_down_part, diagonal_part, codiagonal_up_part = diagonals_preparation(N_part)
 
-# Задаём вектор `x`, компонентами которого является
-# последовательность натуральных чисел от 1 до N (включительно):
+# Задаём тестовое решение `x`, элементами которого является
+# последовательность натуральных чисел от 1 до N включительно:
 if rank == 0:
     x = np.array(range(1, N+1), dtype=np.float64)
 else:
@@ -326,9 +387,10 @@ else:
 # Передаём вектор `x` всем MPI процессам:
 comm.Bcast([x, N, MPI.DOUBLE], root=0)
 
-# Умножаем матрицу `А` на вектор `x`.
-# В результате получаем модельную правую часть `d`,
-# распределённую по всем MPI процессам по кусочкам:
+# Умножаем матрицу `А` на вектор `x`, чтобы получить
+# соответствующую этому решению модельную правую часть
+# вектора `d`. Сразу же будем распределять его по всем
+# MPI процессам по кусочкам `d_part`:
 d_part = np.zeros(N_part, dtype=datatype)
 for n in range(N_part):
     if rank == 0 and n == 0:
@@ -343,15 +405,15 @@ for n in range(N_part):
                      codiagonal_up_part[n]*x[displ+n+1])
 
 # Для сформированной матрицы `А` и модельной правой части `d`
-# запускаем реализованный нами алгоритм мрешения СЛАУ
-# с трёхдиагональной матрицей:
+# запускаем реализованный нами параллельный алгоритм решения
+# СЛАУ с трёхдиагональной матрицей:
 x_part = parallel_tridiagonal_matrix_algorithm(codiagonal_down_part,
                                                diagonal_part,
                                                codiagonal_up_part,
                                                d_part)
 
 # Выводим результат и убеждаемся, что на каждом MPI процессе
-# результат вычислений совпадает с кусочком модельного вектора:
+# результат вычислений совпадает с кусочком требуемого решения:
 print('For rank={}: x_part = {}'.format(rank, x_part))
 
 #------------------------------------------------------------------
