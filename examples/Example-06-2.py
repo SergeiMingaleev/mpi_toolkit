@@ -350,7 +350,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # Снова, в отличие от примера 6.1, используем вызов метода
         # `comm_cart.Sendrecv_replace()` вместо `comm_row.Allreduce()`:
         dot_vec = dot_vec_temp.copy()
-        for n in range(num_col-1) :
+        for n in range(num_col-1):
             comm_cart.Sendrecv_replace([dot_vec_temp, 1, MPI.DOUBLE],
                                        dest=neighbour_right, sendtag=0,
                                        source=neighbour_left, recvtag=MPI.ANY_TAG,
@@ -376,7 +376,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # чего конечный результат может отличаться на каждом процессе,
         # несмотря на выполнение математически одной и той же операции!):
         Ap_part = Ap_part_temp.copy()
-        for n in range(num_col-1) :
+        for n in range(num_col-1):
             comm_cart.Sendrecv_replace([Ap_part_temp, M_part, MPI.DOUBLE],
                                        dest=neighbour_right, sendtag=0,
                                        source=neighbour_left, recvtag=MPI.ANY_TAG,
@@ -401,7 +401,7 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # чего конечный результат может отличаться на каждом процессе,
         # несмотря на выполнение математически одной и той же операции!):
         q_part = q_part_temp.copy()
-        for m in range(num_row-1) :
+        for m in range(num_row-1):
             comm_cart.Sendrecv_replace([q_part_temp, N_part, MPI.DOUBLE],
                                        dest=neighbour_down, sendtag=0,
                                        source=neighbour_up, recvtag=MPI.ANY_TAG,
@@ -420,14 +420,14 @@ def conjugate_gradient_method(A_part, b_part, x_part,
         # Первым делом, на каждом процессе получим скалярное
         # произведение кусочков `p_part` и `q_part`:
         dot_vec_temp[0] = np.dot(p_part, q_part)
-        # и командой `comm_row.Allreduce()` сначала просуммируем все
-        # полученные произведения (суффикс `reduce`!), собрав
-        # их в скалярное произведение полных векторов `p` и `q`,
-        # а затем раздадим полученное значение каждому процессу
-        # (префикс `All`) из своей строки сетки процессов:
+        # Снова, в отличие от примера 6.1, используем вызов метода
+        # `comm_cart.Sendrecv_replace()` вместо `comm_col.Allreduce()`
+        # и суммируем вектора локально на каждом процессе (из-за
+        # чего конечный результат может отличаться на каждом процессе,
+        # несмотря на выполнение математически одной и той же операции!):
 
         dot_vec = dot_vec_temp.copy()
-        for n in range(num_col-1) :
+        for n in range(num_col-1):
             comm_cart.Sendrecv_replace([dot_vec_temp, 1, MPI.DOUBLE],
                                        dest=neighbour_right, sendtag=0,
                                        source=neighbour_left, recvtag=MPI.ANY_TAG,
@@ -502,7 +502,7 @@ if np.int32(np.sqrt(P))**2 != P:
     raise ValueError(
         "\nThe number of processes is not a square of some integer "
         "number. Please launch the program with the command:\n"
-        ">> mpiexec.exe -n P python.exe Example-05-1.py\n"
+        ">> mpiexec.exe -n P python.exe Example-06-2.py\n"
         "where `P=R*R` with an integer `R`\n"
         "(say, P=1, 4, 9, 16, 25, 36, 49, 64, 81, 100)"
     )
