@@ -138,13 +138,13 @@ def diagonals_preparation(N_part) :
     c = empty(N_part, dtype=datatype)
     for n in range(N_part) :
         if is_complex_version:
-            a[n] = random.random_sample(1) + random.random_sample(1)*1j
-            b[n] = random.random_sample(1) + random.random_sample(1)*1j
-            c[n] = random.random_sample(1) + random.random_sample(1)*1j
+            a[n] = random.random_sample() + random.random_sample()*1j
+            b[n] = random.random_sample() + random.random_sample()*1j
+            c[n] = random.random_sample() + random.random_sample()*1j
         else:
-            a[n] = random.random_sample(1)
-            b[n] = random.random_sample(1)
-            c[n] = random.random_sample(1)
+            a[n] = random.random_sample()
+            b[n] = random.random_sample()
+            c[n] = random.random_sample()
     return a, b, c
 
 
