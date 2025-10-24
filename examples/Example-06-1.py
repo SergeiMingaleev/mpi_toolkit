@@ -414,7 +414,7 @@ if np.int32(np.sqrt(P))**2 != P:
     raise ValueError(
         "\nThe number of processes is not a square of some integer "
         "number. Please launch the program with the command:\n"
-        ">> mpiexec.exe -n P python.exe Example-05-1.py\n"
+        ">> mpiexec.exe -n P python.exe Example-06-1.py\n"
         "where `P=R*R` with an integer `R`\n"
         "(say, P=1, 4, 9, 16, 25, 36, 49, 64, 81, 100)"
     )
