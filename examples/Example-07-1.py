@@ -3,7 +3,7 @@
 #             линейных уравнений методом прогонки.
 #
 # Задача: найти вектор x, являющийся решением системы линейных
-#         уравнений A*x = b с трёхдиагональной матрицей A,
+#         уравнений A*x = d с трёхдиагональной матрицей A,
 #         максимально эффективно параллелизуя работу между
 #         процессами с использованием MPI интерфейса.
 #
@@ -25,12 +25,14 @@
 # максимальной балансировки памяти и вычислений по всем процессам.
 #
 # Точно так же будут разбиты на кусочки по процессам и
-# векторы x и b (которые оба также состоят из N элементов).
+# векторы x и d (которые оба также состоят из N элементов).
 
-# Реализация самого параллельного метода прогонки вынесена
-# в функцию `parallel_tridiagonal_matrix_algorithm()` - остальная
-# же часть кода занимается подготовкой и пересылкой данных
-# между MPI процессами.
+# Реализация последовательного метода прогонки вынесена
+# в функцию `consecutive_tridiagonal_matrix_algorithm()`,
+# а реализация параллельного метода прогонки вынесена
+# в функцию `parallel_tridiagonal_matrix_algorithm()`.
+# Остальная часть кода занимается подготовкой и пересылкой
+# данных между MPI процессами.
 #
 #------------------------------------------------------------------
 # Этот пример (в его оригинальном виде) детально обсуждается
@@ -47,63 +49,47 @@ from mpi4py import MPI
 import numpy as np
 
 
-is_complex_version = False
-
-# Для удобства тестирования, пусть версия программы для комплексных
-# чисел запускается при добавлении к программе аргумента 'complex':
-# (mpiexec -n 4 python.exe Example-07-1.py complex)
-if len(sys.argv) == 2 and sys.argv[1] == 'complex':
-    is_complex_version = True
-
-if is_complex_version:
-    datatype = np.complex128
-    MPI_datatype = MPI.DOUBLE_COMPLEX
-else:
-    datatype = np.float64
-    MPI_datatype = MPI.DOUBLE
-
-
-comm = MPI.COMM_WORLD
-P = comm.Get_size()
-rank = comm.Get_rank()
-
-
 #------------------------------------------------------------------
 def consecutive_tridiagonal_matrix_algorithm(a, b, c, d):
     """
+    Реализация последовательного метода прогонки для решения
+    системы линейных уравнений A*x = d с трёхдиагональной
+    матрицей `A`.
 
-    :param a:
-    :param b:
-    :param c:
-    :param d:
-    :return:
+    :param a: Вектор, задающий верхнюю диагональ матрицы `A`.
+    :param b: Вектор, задающий главную диагональ матрицы `A`.
+    :param c: Вектор, задающий нижнюю диагональ матрицы `A`.
+    :param d: Вектор `d`.
+    :return: Вектор решения `x`.
     """
-
     N = len(d)
-
     x = np.empty(N, dtype=datatype)
 
     for n in range(1, N):
-        coef = a[n]/b[n-1]
-        b[n] = b[n] - coef*c[n-1]
-        d[n] = d[n] - coef*d[n-1]
+        coef = a[n] / b[n-1]
+        b[n] = b[n] - coef * c[n-1]
+        d[n] = d[n] - coef * d[n-1]
 
-    x[N-1] = d[N-1]/b[N-1]
+    x[N-1] = d[N-1] / b[N-1]
 
     for n in range(N-2, -1, -1):
-        x[n] = (d[n] - c[n]*x[n+1])/b[n]
+        x[n] = (d[n] - c[n] * x[n+1])/b[n]
 
     return x
 
 
+#------------------------------------------------------------------
 def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     """
+    Реализация параллельного метода прогонки для решения
+    системы линейных уравнений A*x = d с трёхдиагональной
+    матрицей `A`.
 
-    :param a_part:
-    :param b_part:
-    :param c_part:
-    :param d_part:
-    :return:
+    :param a_part: Кусочек вектора, задающий верхнюю диагональ матрицы `A`.
+    :param b_part: Кусочек вектора, задающий главную диагональ матрицы `A`.
+    :param c_part: Кусочек вектора, задающий нижнюю диагональ матрицы `A`.
+    :param d_part: Кусочек вектора `d`.
+    :return: Кусочек вектора решения `x`.
     """
     N_part = len(d_part)
 
@@ -195,10 +181,11 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     return x_part
 
 
+#------------------------------------------------------------------
 def diagonals_preparation(N_part):
     """
     Функция задает в качестве элементов диагоналей
-    трёхдиагональной матрицы `A` произвольные числа.
+    трёхдиагональной матрицы `A` случайные числа.
 
     :param N_part: Число элементов в требуемых векторах.
     :return: Векторы диагоналей `a`, `b`, `c`.
@@ -217,8 +204,35 @@ def diagonals_preparation(N_part):
             c[n] = np.random.random_sample()
     return a, b, c
 
+#------------------------------------------------------------------
+# Начинаем выполнение программы - первым делом, настроим MPI:
+#------------------------------------------------------------------
 
-# Определяем N - число элементов в модельном векторе `x`:
+# Работаем с коммуникатором по всем доступным процессам:
+comm = MPI.COMM_WORLD
+
+# Число P доступных процессов в этом коммуникаторе:
+P = comm.Get_size()
+
+# Номер текущего процесса (от 0 до P-1):
+rank = comm.Get_rank()
+
+# Для удобства тестирования, пусть версия программы для комплексных
+# чисел запускается при добавлении к программе аргумента 'complex':
+# (mpiexec -n 4 python.exe Example-07-1.py complex)
+is_complex_version = False
+if len(sys.argv) == 2 and sys.argv[1] == 'complex':
+    is_complex_version = True
+
+if is_complex_version:
+    datatype = np.complex128
+    MPI_datatype = MPI.DOUBLE_COMPLEX
+else:
+    datatype = np.float64
+    MPI_datatype = MPI.DOUBLE
+
+
+# Определяем N - число элементов в векторе `x`:
 N = 10
 
 if rank == 0:
@@ -249,39 +263,39 @@ comm.Scatter([displs, 1, MPI.INT],
 # Формируем на каждом MPI процессе свои кусочки диагоналей:
 codiagonal_down_part, diagonal_part, codiagonal_up_part = diagonals_preparation(N_part)
 
-# Задаём модельный вектор `x`, компонентами которого является
+# Задаём вектор `x`, компонентами которого является
 # последовательность натуральных чисел от 1 до N (включительно):
 if rank == 0:
     x = np.array(range(1, N+1), dtype=np.float64)
 else:
     x = np.empty(N, dtype=np.float64)
 
-# Передаём модельный вектор `x` всем MPI процессам:
+# Передаём вектор `x` всем MPI процессам:
 comm.Bcast([x, N, MPI.DOUBLE], root=0)
 
-# Умножаем матрицу `А` на модельный вектор `x`.
-# В результате получаем модельную правую часть,
+# Умножаем матрицу `А` на вектор `x`.
+# В результате получаем модельную правую часть `d`,
 # распределённую по всем MPI процессам по кусочкам:
-b_part = np.zeros(N_part, dtype=datatype)
+d_part = np.zeros(N_part, dtype=datatype)
 for n in range(N_part):
     if rank == 0 and n == 0:
-        b_part[n] = (diagonal_part[n]*x[displ+n] +
+        d_part[n] = (diagonal_part[n]*x[displ+n] +
                      codiagonal_up_part[n]*x[displ+n+1])
     elif rank == P-1 and n == N_part-1:
-        b_part[n] = (codiagonal_down_part[n]*x[displ+n-1] +
+        d_part[n] = (codiagonal_down_part[n]*x[displ+n-1] +
                      diagonal_part[n]*x[displ+n])
     else:
-        b_part[n] = (codiagonal_down_part[n]*x[displ+n-1] +
+        d_part[n] = (codiagonal_down_part[n]*x[displ+n-1] +
                      diagonal_part[n]*x[displ+n] +
                      codiagonal_up_part[n]*x[displ+n+1])
 
-# Для сформированной матрицы `А` и модельной правой части `b`
+# Для сформированной матрицы `А` и модельной правой части `d`
 # запускаем реализованный нами алгоритм мрешения СЛАУ
 # с трёхдиагональной матрицей:
 x_part = parallel_tridiagonal_matrix_algorithm(codiagonal_down_part,
                                                diagonal_part,
                                                codiagonal_up_part,
-                                               b_part)
+                                               d_part)
 
 # Выводим результат и убеждаемся, что на каждом MPI процессе
 # результат вычислений совпадает с кусочком модельного вектора:
