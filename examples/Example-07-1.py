@@ -1,5 +1,25 @@
+import sys
 from mpi4py import MPI
-from numpy import empty, array, zeros, int32, float64, random
+from numpy import empty, array, zeros, int32, float64, complex128, random
+
+
+# Объединение примеров из файлов Д.В. Лукьяненко "Example-7-1.py" (для
+# вещественных чисел) и "Example-7-1-complex.py" (для комплексных чисел)
+# в рамках одной программы.
+is_complex_version = False
+
+# Для удобства тестирования, пусть версия программы для комплексных
+# чисел запускается при добавлении к программе аргумента 'complex':
+if len(sys.argv) == 2 and sys.argv[1] == 'complex':
+    is_complex_version = True
+
+if is_complex_version:
+    datatype = complex128
+    MPI_datatype = MPI.DOUBLE_COMPLEX
+else:
+    datatype = float64
+    MPI_datatype = MPI.DOUBLE
+
 
 comm = MPI.COMM_WORLD
 numprocs = comm.Get_size()
@@ -10,20 +30,18 @@ def consecutive_tridiagonal_matrix_algorithm(a, b, c, d) :
     
     N = len(d)
     
-    x = empty(N, dtype=float64)
+    x = empty(N, dtype=datatype)
 
     for n in range(1, N) :
         coef = a[n]/b[n-1]
         b[n] = b[n] - coef*c[n-1]
         d[n] = d[n] - coef*d[n-1]
         
+    x[N-1] = d[N-1]/b[N-1]
+
     for n in range(N-2, -1, -1) :
-        coef = c[n]/b[n+1]
-        d[n] = d[n] - coef*d[n+1]
-        
-    for n in range(N) :
-        x[n] = d[n]/b[n]
-    
+        x[n] = (d[n] - c[n]*x[n+1])/b[n]
+
     return x
 
 
@@ -36,25 +54,25 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part) :
         a_part[n] = -coef*a_part[n-1]
         b_part[n] = b_part[n] - coef*c_part[n-1]
         d_part[n] = d_part[n] - coef*d_part[n-1]
-        
+
     for n in range(N_part-3, -1, -1):
         coef = c_part[n]/b_part[n+1]
         c_part[n] = -coef*c_part[n+1]
         a_part[n] = a_part[n] - coef*a_part[n+1]
         d_part[n] = d_part[n] - coef*d_part[n+1]
-    
+
     if rank > 0 :
-        temp_array_send = array([a_part[0], b_part[0], c_part[0], d_part[0]], dtype=float64)
+        temp_array_send = array([a_part[0], b_part[0], c_part[0], d_part[0]], dtype=datatype)
     if rank < numprocs-1 :     
-        temp_array_recv = empty(4, dtype=float64)   
-    
+        temp_array_recv = empty(4, dtype=datatype)
+
     if rank == 0 :
-        comm.Recv([temp_array_recv, 4, MPI.DOUBLE], source=1, tag=0, status=None)
+        comm.Recv([temp_array_recv, 4, MPI_datatype], source=1, tag=0, status=None)
     if rank in range(1, numprocs-1) :
-        comm.Sendrecv(sendbuf=[temp_array_send, 4, MPI.DOUBLE], dest=rank-1, sendtag=0, 
-                      recvbuf=[temp_array_recv, 4, MPI.DOUBLE], source=rank+1, recvtag=MPI.ANY_TAG, status=None)
+        comm.Sendrecv(sendbuf=[temp_array_send, 4, MPI_datatype], dest=rank-1, sendtag=0,
+                      recvbuf=[temp_array_recv, 4, MPI_datatype], source=rank+1, recvtag=MPI.ANY_TAG, status=None)
     if rank == numprocs-1 :
-        comm.Send([temp_array_send, 4, MPI.DOUBLE], dest=numprocs-2, tag=0)
+        comm.Send([temp_array_send, 4, MPI_datatype], dest=numprocs-2, tag=0)
         
     if rank < numprocs-1 :
         coef = c_part[N_part-1]/temp_array_recv[1]
@@ -63,14 +81,14 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part) :
         d_part[N_part-1] = d_part[N_part-1] - coef*temp_array_recv[3]
     
     temp_array_send = array([a_part[N_part-1], b_part[N_part-1], 
-                             c_part[N_part-1], d_part[N_part-1]], dtype=float64)
+                             c_part[N_part-1], d_part[N_part-1]], dtype=datatype)
      
     if rank == 0 :
-        A_extended = empty((numprocs, 4), dtype=float64)
+        A_extended = empty((numprocs, 4), dtype=datatype)
     else :
         A_extended = None
         
-    comm.Gather([temp_array_send, 4, MPI.DOUBLE], [A_extended, 4, MPI.DOUBLE], root=0)    
+    comm.Gather([temp_array_send, 4, MPI_datatype], [A_extended, 4, MPI_datatype], root=0)
     
     if rank == 0:
         x_temp = consecutive_tridiagonal_matrix_algorithm(
@@ -90,15 +108,15 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part) :
         rcounts_temp = None; displs_temp = None
         
     if rank == 0 :
-        x_part_last = empty(1, dtype=float64)
-        comm.Scatterv([x_temp, rcounts_temp, displs_temp, MPI.DOUBLE], 
-                      [x_part_last, 1, MPI.DOUBLE], root=0)
+        x_part_last = empty(1, dtype=datatype)
+        comm.Scatterv([x_temp, rcounts_temp, displs_temp, MPI_datatype],
+                      [x_part_last, 1, MPI_datatype], root=0)
     else :
-        x_part_last = empty(2, dtype=float64)
-        comm.Scatterv([x_temp, rcounts_temp, displs_temp, MPI.DOUBLE], 
-                      [x_part_last, 2, MPI.DOUBLE], root=0) 
+        x_part_last = empty(2, dtype=datatype)
+        comm.Scatterv([x_temp, rcounts_temp, displs_temp, MPI_datatype],
+                      [x_part_last, 2, MPI_datatype], root=0)
               
-    x_part = empty(N_part, dtype=float64)   
+    x_part = empty(N_part, dtype=datatype)
               
     if rank == 0 :
         for n in range(N_part-1) :
@@ -115,13 +133,18 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part) :
 
 # Функциия задает в качестве элементов диагоналей матрицы A произвольные числа
 def diagonals_preparation(N_part) :
-    a = empty(N_part, dtype=float64)
-    b = empty(N_part, dtype=float64)
-    c = empty(N_part, dtype=float64)
+    a = empty(N_part, dtype=datatype)
+    b = empty(N_part, dtype=datatype)
+    c = empty(N_part, dtype=datatype)
     for n in range(N_part) :
-        b[n] = random.random_sample(1)
-        a[n] = random.random_sample(1)
-        c[n] = random.random_sample(1)
+        if is_complex_version:
+            a[n] = random.random_sample(1) + random.random_sample(1)*1j
+            b[n] = random.random_sample(1) + random.random_sample(1)*1j
+            c[n] = random.random_sample(1) + random.random_sample(1)*1j
+        else:
+            a[n] = random.random_sample(1)
+            b[n] = random.random_sample(1)
+            c[n] = random.random_sample(1)
     return a, b, c
 
 
@@ -166,7 +189,7 @@ comm.Bcast([x, N, MPI.DOUBLE], root=0)
 # Умножаем матрицу А на модельный вектор x
 # В результате получаем модельную правую часть,
 # распределённую по всем mpi-процессам по кусочкам    
-b_part = zeros(N_part, dtype=float64)
+b_part = zeros(N_part, dtype=datatype)
 for n in range(N_part) :
     if rank == 0 and n == 0 :
         b_part[n] = diagonal_part[n]*x[displ+n] + codiagonal_up_part[n]*x[displ+n+1]
