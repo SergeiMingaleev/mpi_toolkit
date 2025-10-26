@@ -102,6 +102,10 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     диагональ матрицы, и векторами `a` и `c` (с размером N-1),
     задающими нижнюю и верхнюю кодиагонали, соответственно.
 
+    Данная реализация метода прогонки требует
+    17*N_part + 9*P - 24 ~ 17*N/P + 9*P
+    арифметических операций.
+
     Для удобства реализации, мы ожидаем, что полные векторы
     `a` и `c` придут также с размером N, но при этом элементы
     `a[0]` и `c[N-1]` просто не будут использоваться.
@@ -125,8 +129,9 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     """
     N_part = len(d_part)
 
-    # Прямой ход метода прогонки (зануляем нижнюю
-    # кодиагональ `a_part`, кроме колонки элементов для `n=0`,
+    # Параллельно на всех процессах выполняем прямой
+    # ход метода Гаусса (зануляем нижнюю кодиагональ
+    # `a_part`, кроме колонки элементов для `n=0`,
     # которую мы всю записываем обратно в вектор `a_part`
     # для экономии памяти):
     for n in range(1, N_part):
@@ -134,8 +139,10 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
         a_part[n] = -coef * a_part[n-1]
         b_part[n] -= coef * c_part[n-1]
         d_part[n] -= coef * d_part[n-1]
+    # COST: 6*(N_part-1) Flop.
 
-    # Обратный ход метода прогонки (зануляем верхнюю
+    # Параллельно на всех процессах выполняем
+    # обратный ход метода Гаусса (зануляем верхнюю
     # кодиагональ `c_part`, кроме колонки элементов для
     # `n=N_part-1`, которую мы всю записываем обратно
     # в вектор `с_part` для экономии памяти).
@@ -146,6 +153,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
         c_part[n] = -coef * c_part[n+1]
         a_part[n] -= coef * a_part[n+1]
         d_part[n] -= coef * d_part[n+1]
+    # COST: 6*(N_part-2) Flop.
 
     # На этом этапе у нас остаются (на каждом процессе)
     # ненулевыми элементы на главной диагонали (их значения
@@ -159,7 +167,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     # очередь - но для этого нужно вычесть из последней строки
     # первых P-1 процессов нулевую строку (домноженную на нужный
     # коэффициент) следующего процесса. Для этого каждый процесс
-    # (кроме первого) должен послать элементы своей нулевой строки
+    # (кроме процесса 0) должен послать элементы своей нулевой строки
     # предыдущему процессу (https://youtu.be/CrqeCy-dZQI?t=1499):
 
     if rank > 0:
@@ -197,6 +205,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
         # в колонке `n=N_part` в нумерации следующего процесса
         # (https://youtu.be/CrqeCy-dZQI?t=1604):
         c_part[N_part-1] = -coef * c_N_part
+        # COST: 7 Flop
 
     # Важно, что теперь последние элементы векторов `a_part`, `b_part`,
     # `c_part`, и `d_part` на каждом процессе (включая и последний!)
@@ -223,6 +232,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
     if rank == 0:
         x_temp = consecutive_tridiagonal_matrix_algorithm(
             A_extended[:,0], A_extended[:,1], A_extended[:,2], A_extended[:,3])
+        # COST: (8*P - 7) Flop
     else:
         x_temp = None
 
@@ -253,6 +263,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
             # и так далее:
             rcounts_temp[k] = 2
             displs_temp[k] = k - 1
+        # COST: P-1 Flop
     else:
         # На остальных процессах эти списки используются только
         # в качестве пустых заглушек (в вызове `Scatterv` ниже):
@@ -297,6 +308,7 @@ def parallel_tridiagonal_matrix_algorithm(a_part, b_part, c_part, d_part):
         for n in range(N_part-1):
             x_part[n] = (d_part[n] - a_part[n]*x_part_last[0] -
                          c_part[n]*x_part_last[1]) / b_part[n]
+        # COST: 5*(N_part-1) Flop
 
     return x_part
 
