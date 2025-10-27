@@ -7,8 +7,9 @@
 # ------------------------------------------------------------------
 
 from mpi4py import MPI
-from ..cpu_timer import StopwatchTimer
 
+from ..config import config
+from ..cpu_timer import StopwatchTimer
 
 # =============================================================================
 class SolverBase:
@@ -18,7 +19,9 @@ class SolverBase:
     """
     def __init__(self, numpy_lib=None):
         if numpy_lib is None:
-            import numpy as numpy_lib
+            # Нельзя больше изменять `config.numpy_lib`:
+            config.lock()
+            numpy_lib = config.numpy_lib
         self._numpy_lib = numpy_lib
 
         # Настроим MPI:
@@ -93,6 +96,10 @@ class SolverBase:
         :return: Число Flop (floating point operations).
         """
         M, N = self._M, self._N
+
+        # TODO: fix this later!
+        if M is None or N is None:
+            return 0
 
         # p_{0} = 0
         flop = N

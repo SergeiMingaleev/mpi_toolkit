@@ -1,5 +1,15 @@
+from mpi4py import MPI
+
+from ..config import config
+
+# Работаем с коммуникатором по всем доступным процессам:
+comm = MPI.COMM_WORLD
+comm_size = comm.Get_size()
+comm_rank = comm.Get_rank()
+
+
 # =============================================================================
-def matrix_Hilbert(M, N=None, numpy_lib=None):
+def matrix_Hilbert(M, N=None, rank=0, numpy_lib=None):
     """
     Создаёт матрицу Гильберта (Hilbert matrix) с размером MxN элементов.
     По определению (https://ru.wikipedia.org/wiki/Матрица_Гильберта),
@@ -29,7 +39,12 @@ def matrix_Hilbert(M, N=None, numpy_lib=None):
         raise ValueError("Matrix size must be one or greater")
 
     if numpy_lib is None:
-        import numpy as numpy_lib
+        # Нельзя больше изменять `config.numpy_lib`:
+        config.lock()
+        numpy_lib = config.numpy_lib
+
+    if rank != comm_rank:
+        return None
 
     if M == 1 and N == 1:
         return numpy_lib.array([[1]])
@@ -39,7 +54,7 @@ def matrix_Hilbert(M, N=None, numpy_lib=None):
 
 
 # =============================================================================
-def matrix_TridiagThermal(M, N=None, b=0.05, numpy_lib=None):
+def matrix_TridiagThermal(M, N=None, b=0.05, rank=0, numpy_lib=None):
     """
     Создаёт трёхдиагональную матрицу с размером MxN элементов,
     которая возникает (для случая M==N) при решении одномерного
@@ -71,7 +86,12 @@ def matrix_TridiagThermal(M, N=None, b=0.05, numpy_lib=None):
         raise ValueError("Matrix size must be 2 or greater")
 
     if numpy_lib is None:
-        import numpy as numpy_lib
+        # Нельзя больше изменять `config.numpy_lib`:
+        config.lock()
+        numpy_lib = config.numpy_lib
+
+    if rank != comm_rank:
+        return None
 
     mat = numpy_lib.zeros((M, N))
     # Главная диагональ:
