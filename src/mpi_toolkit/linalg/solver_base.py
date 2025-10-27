@@ -7,7 +7,7 @@
 # ------------------------------------------------------------------
 
 from mpi4py import MPI
-from .cpu_timer import StopwatchTimer
+from ..cpu_timer import StopwatchTimer
 
 
 # =============================================================================

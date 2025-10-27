@@ -1,8 +1,5 @@
+from mpi4py import MPI
+
+from . import linalg
+
 from .cpu_timer import StopwatchTimer, BenchmarkTimer
-from .special_matrices import matrix_Hilbert, matrix_TridiagThermal
-from .solver_sequential import SolverSequential
-from .solver_parallel_03_1 import SolverParallelBand1
-from .solver_parallel_03_2 import SolverParallelBand2
-from .solver_parallel_05_1 import SolverParallelBlock1
-from .solver_parallel_06_1 import SolverParallelBlock2
-from .solver_parallel_06_2 import SolverParallelBlock3

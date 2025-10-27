@@ -12,7 +12,7 @@
 # mpi_toolkit/examples/Example-03-0.py
 # ------------------------------------------------------------------
 
-from .cpu_timer import BenchmarkTimer
+from ..cpu_timer import BenchmarkTimer
 from .solver_base import SolverBase
 
 

@@ -13,7 +13,7 @@
 
 from mpi4py import MPI
 
-from .cpu_timer import BenchmarkTimer
+from ..cpu_timer import BenchmarkTimer
 from .solver_base import SolverBase
 
 
