@@ -20,8 +20,8 @@ t_0 = 0.0; T = 6.0
 
 eps = 10**(-1.5)
 
-N = 200
-M = 20000
+N = 800
+M = 300_000
 
 h = (b - a) / N
 tau = (T - t_0) / M
@@ -36,9 +36,11 @@ u[0, :] = u_init(x)
 u[1:, 0] = u_left(t[1:])
 u[1:, N] = u_right(t[1:])
 
+eps_tau_h2 = eps*tau/h**2
+tau_2h = tau/(2*h)
 for m in range(M):
-    u[m+1, 1:-1] = u[m,1:-1] + eps*tau/h**2*(u[m,2:] - 2*u[m,1:-1] + u[m,:-2]) + \
-        tau/(2*h)*u[m,1:-1]*(u[m,2:] - u[m,:-2]) + tau*u[m,1:-1]**3
+    u[m+1, 1:-1] = u[m,1:-1] + eps_tau_h2*(u[m,2:] - 2*u[m,1:-1] + u[m,:-2]) + \
+        tau_2h*u[m,1:-1]*(u[m,2:] - u[m,:-2]) + tau*u[m,1:-1]**3
 
 end_time = time.perf_counter()
 
