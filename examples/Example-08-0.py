@@ -31,17 +31,14 @@ t = np.linspace(t_0, T, M+1)
 
 u = np.empty((M + 1, N + 1))
 
-for n in range(N + 1):
-    u[0, n] = u_init(x[n])
+u[0, :] = u_init(x)
 
-for m in range(1, M + 1):
-    u[m, 0] = u_left(t[m])
-    u[m, N] = u_right(t[m])
+u[1:, 0] = u_left(t[1:])
+u[1:, N] = u_right(t[1:])
 
 for m in range(M):
-    for n in range(1, N):
-        u[m+1, n] = u[m,n] + eps*tau/h**2*(u[m,n+1] - 2*u[m,n] + u[m,n-1]) + \
-            tau/(2*h)*u[m,n]*(u[m,n+1] - u[m,n-1]) + tau*u[m,n]**3
+    u[m+1, 1:-1] = u[m,1:-1] + eps*tau/h**2*(u[m,2:] - 2*u[m,1:-1] + u[m,:-2]) + \
+        tau/(2*h)*u[m,1:-1]*(u[m,2:] - u[m,:-2]) + tau*u[m,1:-1]**3
 
 end_time = time.perf_counter()
 
