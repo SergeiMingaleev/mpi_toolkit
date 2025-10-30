@@ -19,13 +19,14 @@ def u_right(t):
 
 start_time = MPI.Wtime()
 
-a = 0.0; b = 1.0
-t_0 = 0.0; T = 6.0
-
 eps = 10**(-1.5)
+a = 0.0; b = 1.0
+t_0 = 0.0
 
-N = 800
-M = 300_000
+T = 6.0
+N = 800;    M = 300_000
+# T = 0.02
+# N = 8_000;  M = 100_000
 
 h = (b - a) / N
 tau = (T - t_0) / M
@@ -74,23 +75,24 @@ comm.Scatter([rcounts_from_0, 1, MPI.INT],
 
 if rank == 0:
     u = np.empty((M+1, N+1), dtype=np.float64)
-    for n in range(N + 1):
-        u[0, n] = u_init(x[n]) 
+    u[0, :] = u_init(x)
 else:
     u = np.empty((M+1, 0), dtype=np.float64)
 
 u_part = np.empty(N_part, dtype=np.float64)
 u_part_aux = np.empty(N_part_aux, dtype=np.float64)
 
+eps_tau_h2 = eps*tau/h**2
+tau_2h = tau/(2*h)
+
 for m in range(M):
     comm.Scatterv([u[m], rcounts_from_0, displs_from_0, MPI.DOUBLE], 
                   [u_part_aux, N_part_aux, MPI.DOUBLE], root=0)
 
-    for n in range(1, N_part_aux - 1):
-        u_part[n-1] = u_part_aux[n] + \
-            eps*tau/h**2*(u_part_aux[n+1] - 2*u_part_aux[n] + u_part_aux[n-1]) + \
-                tau/(2*h)*u_part_aux[n]*(u_part_aux[n+1] - u_part_aux[n-1]) + \
-                    tau*u_part_aux[n]**3
+    u_part[:N_part_aux-2] = u_part_aux[1:-1] + \
+        eps_tau_h2*(u_part_aux[2:] - 2*u_part_aux[1:-1] + u_part_aux[:-2]) + \
+            tau_2h*u_part_aux[1:-1]*(u_part_aux[2:] - u_part_aux[:-2]) + \
+                tau*u_part_aux[1:-1]**3
 
     if rank == 0:
         u_part = np.hstack((np.array(u_left(t[m+1]), dtype=np.float64), u_part[0:N_part-1]))
