@@ -48,4 +48,5 @@ end_time = time.perf_counter()
 
 print('Elapsed time is {:.4f} sec'.format(end_time-start_time))
 
-np.savez('Example-08-0_Results', x=x, u=u)
+# Если нужно сохранить данные в файл, откомментируйте команду ниже:
+#np.savez('Example-08-0_Results', x=x, u=u)
