@@ -108,5 +108,5 @@ if rank == 0:
     print('N={}, M={}'.format(N, M))
     print('Number of MPI process is {}'.format(numprocs))
     print('Elapsed time is {:.4f} sec.'.format(end_time-start_time))
-
-    np.savez('Example-08-1_Results', x=x, u=u)
+    # Если нужно сохранить данные в файл, откомментируйте команду ниже:
+    #np.savez('Example-08-1_Results', x=x, u=u)
