@@ -135,12 +135,12 @@ if rank_cart == numprocs-1:
 end_time = MPI.Wtime()
 
 if rank_cart == 0:
-    import matplotlib.pyplot as plt
-
     print('N={}, M={}'.format(N, M))
     print('Number of MPI process is {}'.format(numprocs))
     print('Elapsed time is {:.4f} sec.'.format(end_time-start_time))
-
+    # Если нужно вывести график, закомментируйте `exit()` ниже:
+    exit()
+    import matplotlib.pyplot as plt
     plt.style.use('dark_background')
     fig = plt.figure()
     ax = plt.axes(xlim=(a,b), ylim=(-2.0, 2.0))
