@@ -22,13 +22,14 @@ def u_right(t):
 
 start_time = MPI.Wtime()
 
-a = 0.0; b = 1.0
-t_0 = 0.0; T = 6.0
-
 eps = 10**(-1.5)
+a = 0.0; b = 1.0
+t_0 = 0.0
 
-N = 800
-M = 300_000
+T = 6.0
+N = 800;    M = 300_000
+# T = 0.02
+# N = 8_000;  M = 100_000
 
 h = (b - a) / N
 tau = (T - t_0) / M
@@ -80,21 +81,21 @@ comm_cart.Scatter([displs_from_0, 1, MPI.INT],
 
 u_part_aux = np.empty((M + 1, N_part_aux), dtype=np.float64)
 
-for n in range(N_part_aux):
-    u_part_aux[0, n] = u_init(x[displ_aux + n])   
+u_part_aux[0, :] = u_init(x[displ_aux:displ_aux+N_part_aux])
+
 if rank_cart == 0:
-    for m in range(1, M + 1):
-        u_part_aux[m, 0] = u_left(t[m])  
+    u_part_aux[1:, 0] = u_left(t[1:])
 if rank_cart == numprocs-1:
-    for m in range(1, M + 1):
-        u_part_aux[m, N_part_aux - 1] = u_right(t[m])
+    u_part_aux[1:, N_part_aux - 1] = u_right(t[1:])
+
+eps_tau_h2 = eps*tau/h**2
+tau_2h = tau/(2*h)
 
 for m in range(M):
-    for n in range(1, N_part_aux - 1):
-        u_part_aux[m + 1, n] = u_part_aux[m, n] + \
-            eps*tau/h**2*(u_part_aux[m, n+1] - 2*u_part_aux[m, n] + u_part_aux[m, n-1]) + \
-                tau/(2*h)*u_part_aux[m, n]*(u_part_aux[m, n+1] - u_part_aux[m, n-1]) + \
-                    tau*u_part_aux[m, n]**3
+    u_part_aux[m + 1, 1:-1] = u_part_aux[m, 1:-1] + \
+        eps_tau_h2*(u_part_aux[m, 2:] - 2*u_part_aux[m, 1:-1] + u_part_aux[m, :-2]) + \
+            tau_2h*u_part_aux[m, 1:-1]*(u_part_aux[m, 2:] - u_part_aux[m, :-2]) + \
+                tau*u_part_aux[m, 1:-1]**3
 
     if rank_cart == 0:
         comm_cart.Sendrecv(sendbuf=[u_part_aux[m+1, N_part_aux-2], 1, MPI.DOUBLE], 
