@@ -23,8 +23,8 @@ eps = 10**(-1.5)
 a = 0.0; b = 1.0
 t_0 = 0.0
 
-T = 6.0
-N = 800;    M = 300_000
+T = 2.0
+N = 800;    M = 100_000
 # T = 0.02
 # N = 8_000;  M = 100_000
 
@@ -108,5 +108,6 @@ if rank == 0:
     print('N={}, M={}'.format(N, M))
     print('Number of MPI process is {}'.format(numprocs))
     print('Elapsed time is {:.4f} sec.'.format(end_time-start_time))
+
     # Если нужно сохранить данные в файл, откомментируйте команду ниже:
-    #np.savez('Example-08-1_Results', x=x, u=u)
+    #np.savez('Example-08-1_Results', x=x, t=t, u=u)

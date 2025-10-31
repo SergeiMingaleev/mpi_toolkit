@@ -194,8 +194,8 @@ eps = 10**(-1.5)
 a = 0.0; b = 1.0
 t_0 = 0.0
 
-T = 6.0
-N = 800;    M = 3000
+T = 2.0
+N = 800;    M = 1000
 # T = 2.0
 # N = 200;  M = 300
 
@@ -313,8 +313,10 @@ if rank_cart == 0:
     print('Number of MPI process is {}'.format(numprocs))
     print('Elapsed time is {:.4f} sec.'.format(end_time-start_time))
 
-    from matplotlib import pyplot as plt
+    # Если нужно вывести график, закомментируйте `exit()` ниже:
+    exit()
 
+    from matplotlib import pyplot as plt
     plt.style.use('dark_background')
     fig = plt.figure()
     ax = plt.axes(xlim=(a,b), ylim=(-2.0, 2.0))

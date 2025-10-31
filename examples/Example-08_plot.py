@@ -1,7 +1,7 @@
 #------------------------------------------------------------------
 # Программа для создания анимации решения дифференциального
 # уравнения в частных производных параболического типа,
-# найденного в примерах 8.0 и 8.1.
+# найденного в примерах 8.0, 8.1, и 9.1.
 #
 # Пример запуска программы:
 #    python Example-08_plot.py Example-08-1_Results.npz
@@ -22,10 +22,12 @@
 #   pip install celluloid
 #
 #------------------------------------------------------------------
-# Эта программа (в её оригинальном виде) обсуждается в лекции
+# Эта программа (в её оригинальном виде) обсуждается в лекциях
 # Д.В. Лукьяненко "8. Решение задач для уравнений в частных
-# производных.Ч.1" начиная со времени 18:09:
+# производных.Ч.1" начиная со времени 18:09 и "9. Решение задач
+# для уравнений в частных производных.Ч.2" начиная со времени 26:48:
 # https://youtu.be/6SYN28B_iyE&t=1089
+# https://youtu.be/QuPp0AMiBfU&t=1609
 #------------------------------------------------------------------
 
 import os
@@ -39,31 +41,45 @@ from celluloid import Camera
 # Примем как аргумент запуска программы имя файла данных
 # и проверим его:
 
-if len(sys.argv) != 2:
-    print("Please run the program with the name of the data file "
-          "that should be converted to animation added as an argument.\n"
-          "Example: python Example-08_plot.py Example-08-1_Results.npz")
+if len(sys.argv) not in [2, 3]:
+    print("\n"
+          "Please run the program with the name of the data file\n"
+          "which should be converted to the animation added as an argument.\n"
+          "EXAMPLE: python Example-08_plot.py Example-08-1_Results.npz\n"
+          "\n"
+          "Optionally, you can also add as the last argument an integer\n"
+          "indicating the frame step that should be used for creating\n"
+          "the animation (by default, the frame step is 1, that is every\n"
+          "saved time frame is included into the animation).\n"
+          "EXAMPLE: python Example-08_plot.py Example-08-1_Results.npz 30"
+          "\n")
     exit()
 
 filename = sys.argv[1]
-
-if not os.path.isfile(filename):
-    raise FileNotFoundError(f"Cannot find the file '{filename}'")
 
 filename_base, filename_ext = os.path.splitext(filename)
 
 if filename_ext != ".npz":
     raise IOError(f"Expected a file with the extension '.npz', but got: '{filename}'")
 
-print(f"Converting data file '{filename}' to animation file '{filename_base}.mp4'.")
+if not os.path.isfile(filename):
+    raise FileNotFoundError(f"Cannot find the file '{filename}'")
+
+frame_step = 1
+if len(sys.argv) == 3:
+    frame_step = int(sys.argv[2])
+
+print(f"Converting data file '{filename}' to animation file '{filename_base}.mp4'\n"
+      f"using the time frame step {frame_step}.\n")
 print("Please wait...")
 
 #------------------------------------------------------------------
-# Зачитаем файл данных и извлечём из него массивы `x` и `u`:
+# Зачитаем файл данных и извлечём из него массивы `x`, `t`, и `u`:
 
 results = np.load(filename)
 
 x = results['x']
+t = results['t']
 u = results['u']
 
 # Диапазон изменений значений по оси `x`:
@@ -80,10 +96,11 @@ ax.set_xlabel('x')
 ax.set_ylabel('u')
 
 # Цикл по моментам времени, для которых записан файл
-# данных - будем рисовать кадры для каждого 30-го момента:
-for m in range(0, len(u), 30):
+# данных - будем рисовать кадры с шагом `frame_step`:
+for m in range(0, len(u), frame_step):
     # Рисуем кадр анимации:
     ax.plot(x, u[m], color='y', ls='-', lw=2)
+    ax.text(0.8, -1.6, f't = {t[m]:.3f}')
     # Добавляем его в анимацию:
     camera.snap()
 # Анимируем набранные кадры:
@@ -95,5 +112,5 @@ animation.save(filename_base + '.mp4')
 # `matplotlib.animation.ArtistAnimation`, и он может записывать
 # анимации в разных форматах - читайте его документацию:
 # https://matplotlib.org/stable/api/_as_gen/matplotlib.animation.ArtistAnimation.html
-
+print("Done.")
 #------------------------------------------------------------------
