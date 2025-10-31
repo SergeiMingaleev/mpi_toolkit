@@ -32,6 +32,7 @@
 
 import os
 import sys
+import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 from celluloid import Camera
@@ -42,23 +43,23 @@ from celluloid import Camera
 # (опционально) шаг по моментам времени, которые нужно включить
 # в анимацию:
 
-if len(sys.argv) not in [2, 3]:
-    print("\n"
-          "Пример запуска программы:\n"
-          ">> python Example-08_plot.py Example-08-1_Results.npz\n"
-          "где 'Example-08-1_Results.npz' - имя файла данных, для\n"
-          "которых нужно создать анимацию.\n"
-          "\n"
-          "По умолчанию, анимация будет создана для всех записанных\n"
-          "моментов времени. Но вы можете добавить ещё один аргумент\n"
-          "(целое число) для указания шага по моментам времени,\n"
-          "которые будут включены в анимацию. Пример запуска:\n"
-          ">> python Example-08_plot.py Example-08-1_Results.npz 30\n"
-          "\n")
-    exit()
+parser = argparse.ArgumentParser(
+            prog='python Example-08_plot.py',
+            description='Конвертер файла данных в анимацию для '
+                        'Примеров 8.0, 8.1, и 9.1.',
+            #usage='%(prog)s [options]'
+)
+parser.add_argument('filename',
+                    help='Имя файла данных, для которых нужно создать анимацию. '
+                         'Должен быть записан в формате ".npz".')
+parser.add_argument('-s', '--step', default=1,
+                    help='Шаг по моментам времени, которые будут включены '
+                         'в анимацию. По умолчанию равно 1 - включать '
+                         'каждый записанный момент времени.')
 
-filename = sys.argv[1]
+args = parser.parse_args()
 
+filename = args.filename
 filename_base, filename_ext = os.path.splitext(filename)
 
 if filename_ext != ".npz":
@@ -67,11 +68,9 @@ if filename_ext != ".npz":
 if not os.path.isfile(filename):
     raise FileNotFoundError(f"Не могу найти файл '{filename}'")
 
-frame_step = 1
-if len(sys.argv) == 3:
-    frame_step = int(sys.argv[2])
+frame_step = int(args.step)
 
-print(f"Конвертируем файл данных '{filename}' в файл анимации '{filename_base}.mp4'\n"
+print(f"Конвертируем файл данных '{filename}' в файл анимации '{filename_base}.mp4' "
       f"используя шаг {frame_step} по записанным моментам времени.\n")
 
 #------------------------------------------------------------------
