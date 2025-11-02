@@ -198,6 +198,8 @@ parser.add_argument('--slow', action="store_true",
                     help='Использовать медленную реализацию решения, '
                          'с циклом по `n` при обновлении `u[m,n]` '
                          'вместо использования срезов `u[m,:]`.')
+parser.add_argument('--noheader', action="store_true",
+                    help='Не печатать названия колонок в выводе времени счёта.')
 parser.add_argument('--save', action="store_true",
                     help='Сохранить результаты расчётов в файл '
                          '"Example-08-0_Results.npz".')
@@ -288,8 +290,12 @@ else:
 # расчётов в файл и/или рисуем график решения.
 
 end_time = time.perf_counter()
+duration = end_time - start_time
+P = 1  # Число процессов, решающих уравнение.
 
-print('Elapsed time is {:.4f} sec'.format(end_time-start_time))
+if not args.noheader:
+    print('N\t M\t Procs\t time[sec]')
+print(f'{N}\t {M}\t {P}\t {duration:.6f}')
 
 # Если нужно, сохраняем данные в файл:
 if args.save:
@@ -304,8 +310,10 @@ if args.plot:
     fig = plt.figure()
     ax = plt.axes(xlim=(a,b), ylim=(-2.0, 2.0))
     ax.set_xlabel('x'); ax.set_ylabel('u')
-    ax.plot(x, u[-1, :], color='y', ls='-', lw=2,
-            label=f'T = {t[-1]}')
+    for m in [0, M//4, M//2, -1]:
+        ax.plot(x, u[m, :], ls='-', lw=2,
+                label=f'T = {t[m]}')
+    plt.legend()
     plt.show()
 
 #------------------------------------------------------------------
