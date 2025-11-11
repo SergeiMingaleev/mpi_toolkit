@@ -166,8 +166,17 @@ def slow_pde_solution():
                           dest=1, sendtag=0,
                           recvbuf=[u_part_aux[m+1, N_part_aux-1:], 1, MPI.DOUBLE],
                           source=1, recvtag=MPI.ANY_TAG, status=None)
-        if rank in range(1, P-1):
-            # Промежуточные процессы посылают своё решение для своих первой
+        elif rank == P-1:
+            # Последний процесс посылает своё решение для своей первой
+            # вычисленной точки (n=1) предпоследнему процессу и получает от него
+            # решение для его последней вычисленной точки (n=N_part_aux-2),
+            # записывая его на место своего самого первого элемента (n=0).
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1], 1, MPI.DOUBLE],
+                          dest=P-2, sendtag=0,
+                          recvbuf=[u_part_aux[m+1, 0:], 1, MPI.DOUBLE],
+                          source=P-2, recvtag=MPI.ANY_TAG, status=None)
+        else:  # if rank in range(1, P-1)
+            # Промежуточные же процессы посылают своё решение для своих первой
             # (n=1) и последней (n=N_part_aux-2) из вычисленных точек соседним
             # процессам слева (rank-1) и справа (rank+1) от себя, соответственно,
             # и получают решения для первой вычисленной точки от процесса
@@ -182,15 +191,6 @@ def slow_pde_solution():
                           dest=rank+1, sendtag=0,
                           recvbuf=[u_part_aux[m+1, N_part_aux-1:], 1, MPI.DOUBLE],
                           source=rank+1, recvtag=MPI.ANY_TAG, status=None)
-        if rank == P-1:
-            # Наконец, последний процесс посылает своё решение для своей первой
-            # вычисленной точки (n=1) предпоследнему процессу и получает от него
-            # решение для его последней вычисленной точки (n=N_part_aux-2),
-            # записывая его на место своего самого первого элемента (n=0).
-            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1], 1, MPI.DOUBLE],
-                          dest=P-2, sendtag=0,
-                          recvbuf=[u_part_aux[m+1, 0:], 1, MPI.DOUBLE],
-                          source=P-2, recvtag=MPI.ANY_TAG, status=None)
 
 
 #------------------------------------------------------------------
@@ -229,8 +229,17 @@ def fast_pde_solution():
                           dest=1, sendtag=0,
                           recvbuf=[u_part_aux[m+1, N_part_aux-1:], 1, MPI.DOUBLE],
                           source=1, recvtag=MPI.ANY_TAG, status=None)
-        if rank in range(1, P-1):
-            # Промежуточные процессы посылают своё решение для своих первой
+        elif rank == P-1:
+            # Последний процесс посылает своё решение для своей первой
+            # вычисленной точки (n=1) предпоследнему процессу и получает от него
+            # решение для его последней вычисленной точки (n=N_part_aux-2),
+            # записывая его на место своего самого первого элемента (n=0).
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1], 1, MPI.DOUBLE],
+                          dest=P-2, sendtag=0,
+                          recvbuf=[u_part_aux[m+1, 0:], 1, MPI.DOUBLE],
+                          source=P-2, recvtag=MPI.ANY_TAG, status=None)
+        else:  # if rank in range(1, P-1)
+            # Промежуточные же процессы посылают своё решение для своих первой
             # (n=1) и последней (n=N_part_aux-2) из вычисленных точек соседним
             # процессам слева (rank-1) и справа (rank+1) от себя, соответственно,
             # и получают решения для первой вычисленной точки от процесса
@@ -245,15 +254,6 @@ def fast_pde_solution():
                           dest=rank+1, sendtag=0,
                           recvbuf=[u_part_aux[m+1, N_part_aux-1:], 1, MPI.DOUBLE],
                           source=rank+1, recvtag=MPI.ANY_TAG, status=None)
-        if rank == P-1:
-            # Наконец, последний процесс посылает своё решение для своей первой
-            # вычисленной точки (n=1) предпоследнему процессу и получает от него
-            # решение для его последней вычисленной точки (n=N_part_aux-2),
-            # записывая его на место своего самого первого элемента (n=0).
-            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1], 1, MPI.DOUBLE],
-                          dest=P-2, sendtag=0,
-                          recvbuf=[u_part_aux[m+1, 0:], 1, MPI.DOUBLE],
-                          source=P-2, recvtag=MPI.ANY_TAG, status=None)
 
 
 # ------------------------------------------------------------------
