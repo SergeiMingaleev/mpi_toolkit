@@ -317,7 +317,7 @@ if args.save:
     print(f"Сохраняем данные в файл '{filename}'.")
     np.savez(filename, x=x, t=t, u=u)
 
-# Если нужно, рисуем решение для последнего момента времени:
+# Если нужно, рисуем решение для нескольких моментов времени:
 if args.plot:
     from matplotlib import pyplot as plt
     plt.style.use('dark_background')
