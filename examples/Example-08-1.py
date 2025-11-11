@@ -146,7 +146,7 @@ def slow_pde_solution():
     """
     # Используемые глобальные переменные (определяем их здесь
     # вместо передачи в качестве аргументов функции):
-    global P, rank, M, u, u_part, u_part_aux, N_part, N_part_aux, \
+    global comm, P, rank, M, u, u_part, u_part_aux, N_part, N_part_aux, \
            rcounts_from_0, displs_from_0, \
            eps_dt_dx2, dt_2dx, dt
 
@@ -199,7 +199,7 @@ def fast_pde_solution():
     """
     # Используемые глобальные переменные (определяем их здесь
     # вместо передачи в качестве аргументов функции):
-    global P, rank, M, u, u_part, u_part_aux, N_part, N_part_aux, \
+    global comm, P, rank, M, u, u_part, u_part_aux, N_part, N_part_aux, \
            rcounts_from_0, displs_from_0, \
            eps_dt_dx2, dt_2dx, dt
 
@@ -583,7 +583,7 @@ if rank == 0:
         print(f"Сохраняем данные в файл '{filename}'.")
         np.savez(filename, x=x, t=t, u=u)
 
-    # Если нужно, рисуем решение для последнего момента времени:
+    # Если нужно, рисуем решение для нескольких моментов времени:
     if args.plot:
         from matplotlib import pyplot as plt
         plt.style.use('dark_background')
