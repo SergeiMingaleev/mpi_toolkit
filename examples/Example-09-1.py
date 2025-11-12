@@ -83,6 +83,14 @@ def func(u_m):
 
 #------------------------------------------------------------------
 def diagonals_preparation(u_m):
+    """
+        [ b0 c0  0 ]
+    A = [ a1 b1 c1 ]
+        [ 0  a2 b2 ]
+
+    :param u_m:
+    :return:
+    """
     global N, alpha, eps_dt_dx2, dt_2dx, dt
 
     a = -alpha * (eps_dt_dx2 - dt_2dx * u_m[1:-1])
@@ -151,8 +159,10 @@ def fast_pde_solution():
     # Цикл по всем моментам времени:
     for m in range(M):
         codiag_down, diag, codiag_up = diagonals_preparation(u[m])
-        cba = np.vstack((codiag_up, diag, codiag_down))
-        # abc = np.vstack((codiag_down, diag, codiag_up))
+        cba = np.empty((3, len(diag)), dtype=np.float64)
+        cba[0, 1:] = codiag_up[:-1]
+        cba[1, :] = diag
+        cba[2, :-1] = codiag_down[1:]
         d = func(u[m])
         w = scipy.linalg.solve_banded((1, 1), cba, d)
         u[m + 1, 1:-1] = u[m, 1:-1] + dt * w.real
