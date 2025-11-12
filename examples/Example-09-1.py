@@ -151,9 +151,10 @@ def fast_pde_solution():
     # Цикл по всем моментам времени:
     for m in range(M):
         codiag_down, diag, codiag_up = diagonals_preparation(u[m])
-        abc = np.vstack((codiag_down, diag, codiag_up))
+        cba = np.vstack((codiag_up, diag, codiag_down))
+        # abc = np.vstack((codiag_down, diag, codiag_up))
         d = func(u[m])
-        w = scipy.linalg.solve_banded((1, 1), abc, d)
+        w = scipy.linalg.solve_banded((1, 1), cba, d)
         u[m + 1, 1:-1] = u[m, 1:-1] + dt * w.real
 
 
