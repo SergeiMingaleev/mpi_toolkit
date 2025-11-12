@@ -113,19 +113,19 @@ def consecutive_tridiagonal_matrix_algorithm(a, b, c, d):
 
 
 #------------------------------------------------------------------
-def func(y, t):
+def func(u_m):
     global N, eps_dx2, _2dx
 
     f = np.empty(N-1, dtype=np.float64)
-    f[0] = eps_dx2*(y[1] - 2*y[0] + u_left(t)) + _2dx*y[0]*(y[1] - u_left(t)) + y[0]**3
+    f[0] = eps_dx2*(u_m[2] - 2*u_m[1] + u_m[0]) + _2dx*u_m[1]*(u_m[2] - u_m[0]) + u_m[1]**3
     for n in range(1, N-2):
-        f[n] = eps_dx2*(y[n+1] - 2*y[n] + y[n-1]) + _2dx*y[n]*(y[n+1] - y[n-1]) + y[n]**3
-    f[N-2] = eps_dx2*(u_right(t) - 2*y[N-2] + y[N-3]) + _2dx*y[N-2]*(u_right(t) - y[N-3]) + y[N-2]**3
+        f[n] = eps_dx2*(u_m[n+2] - 2*u_m[n+1] + u_m[n]) + _2dx*u_m[n+1]*(u_m[n+2] - u_m[n]) + u_m[n+1]**3
+    f[N-2] = eps_dx2*(u_m[N] - 2*u_m[N-1] + u_m[N-2]) + _2dx*u_m[N-1]*(u_m[N] - u_m[N-2]) + u_m[N-1]**3
     return f
 
 
 #------------------------------------------------------------------
-def diagonals_preparation(y, t):
+def diagonals_preparation(u_m):
     global N, alpha, eps_dt_dx2, dt_2dx, dt
 
     a = np.empty(N-1, dtype=np.float64)
@@ -133,19 +133,19 @@ def diagonals_preparation(y, t):
     c = np.empty(N-1, dtype=np.float64)
 
     b[0] = 1.0 - alpha*(- 2*eps_dt_dx2
-                        + dt_2dx*(y[1] - u_left(t))
-                        + 3*dt*y[0]**2)
-    c[0] = -alpha*(eps_dt_dx2 + dt_2dx*y[0])
+                        + dt_2dx*(u_m[2] - u_m[0])
+                        + 3*dt*u_m[1]**2)
+    c[0] = -alpha*(eps_dt_dx2 + dt_2dx*u_m[1])
     for n in range(1, N-2):
-        a[n] = -alpha*(eps_dt_dx2 - dt_2dx*y[n])
+        a[n] = -alpha*(eps_dt_dx2 - dt_2dx*u_m[n+1])
         b[n] = 1.0 - alpha*(- 2*eps_dt_dx2
-                            + dt_2dx*(y[n+1] - y[n-1])
-                            + 3*dt*y[n]**2)
-        c[n] = -alpha*(eps_dt_dx2 + dt_2dx*y[n])
-    a[N-2] = -alpha*(eps_dt_dx2 - dt_2dx*y[N-2])
+                            + dt_2dx*(u_m[n+2] - u_m[n])
+                            + 3*dt*u_m[n+1]**2)
+        c[n] = -alpha*(eps_dt_dx2 + dt_2dx*u_m[n+1])
+    a[N-2] = -alpha*(eps_dt_dx2 - dt_2dx*u_m[N-1])
     b[N-2] = 1.0 - alpha*(- 2*eps_dt_dx2
-                          + dt_2dx*(u_right(t) - y[N-3])
-                          + 3*dt*y[N-2]**2)
+                          + dt_2dx*(u_m[N] - u_m[N-2])
+                          + 3*dt*u_m[N-1]**2)
 
     return a, b, c
 
@@ -204,19 +204,15 @@ def slow_pde_solution():
     # вместо передачи в качестве аргументов функции):
     global M, u, t, dt
 
-    y = u[0, 1:-1]
-
     # Цикл по всем моментам времени:
     for m in range(M):
-        codiag_down, diag, codiag_up = diagonals_preparation(y, t[m])
-        w_1 = consecutive_tridiagonal_matrix_algorithm(
-                                        a=codiag_down,
-                                        b=diag,
-                                        c=codiag_up,
-                                        d=func(y, t[m] + dt / 2))
-        y = y + dt * w_1.real
-
-        u[m + 1, 1:-1] = y
+        codiag_down, diag, codiag_up = diagonals_preparation(u[m])
+        w = consecutive_tridiagonal_matrix_algorithm(
+                                            a=codiag_down,
+                                            b=diag,
+                                            c=codiag_up,
+                                            d=func(u[m]))
+        u[m + 1, 1:-1] = u[m, 1:-1] + dt * w.real
 
 
 #------------------------------------------------------------------
