@@ -255,15 +255,15 @@ parser = argparse.ArgumentParser(
             description='Решение 1D ДУЧП параболического типа с использованием '
                         '"явной" разностной схемы без MPI параллелизации.',
 )
-parser.add_argument('-Nx', default=50,
+parser.add_argument('-Nx', default=100,
                     help='Число `Nx` интервалов сетки по координате `x`. '
-                         'По умолчанию равно 50.')
-parser.add_argument('-Ny', default=50,
+                         'По умолчанию равно 100.')
+parser.add_argument('-Ny', default=100,
                     help='Число `Ny` интервалов сетки по координате `y`. '
-                         'По умолчанию равно 50.')
-parser.add_argument('-M', default=500,
+                         'По умолчанию равно 100.')
+parser.add_argument('-M', default=2000,
                     help='Число `M` интервалов сетки по времени `t`. '
-                         'По умолчанию равно 500.')
+                         'По умолчанию равно 2000.')
 parser.add_argument('-T', default=5.0,
                     help='Максимальное время `T`, до которого должны проводиться '
                          'расчёты. По умолчанию равно 5.0.')
@@ -274,8 +274,11 @@ parser.add_argument('--slow', action="store_true",
 parser.add_argument('--noheader', action="store_true",
                     help='Не печатать названия колонок в выводе времени счёта.')
 parser.add_argument('--save', action="store_true",
-                    help='Сохранить результаты расчётов в файл '
-                         '"Example-10-1_Results.npz".')
+                    help='Сохранить результаты расчётов для последнего момента '
+                         'времени в файл "Example-10-1_Results.npz".')
+parser.add_argument('--saveall', action="store_true",
+                    help='Сохранить результаты расчётов для всех моментов '
+                         'времени в файл "Example-10-1_Results_all.npz".')
 parser.add_argument('--plot', action="store_true",
                     help='Нарисовать решение для последнего момента времени.')
 
@@ -384,6 +387,16 @@ print(f'{Nx}\t {Ny}\t {M}\t {P}\t {duration1:.6f}\t {duration2:.6f}')
 if args.save:
     filename = 'Example-10-1_Results.npz'
     print(f"Сохраняем данные в файл '{filename}'.")
+    # Сохраним данные только для последнего момента времени,
+    # чтобы было удобнее сравнивать с параллельными версиями
+    # программы, где мы будем собирать на процессе 0 данные
+    # только для последнего момента времени:
+    np.savez(filename, x=x, y=y, t=T, u=u[-1])
+
+if args.saveall:
+    filename = 'Example-10-1_Results_all.npz'
+    print(f"Сохраняем данные в файл '{filename}'.")
+    # Сохраним данные для всех времён:
     np.savez(filename, x=x, y=y, t=t, u=u)
 
 # Если нужно, рисуем решение для нескольких моментов времени:
@@ -396,7 +409,7 @@ if args.plot:
     ax.set_aspect('equal')
     X, Y = np.meshgrid(x, y)
     ax.pcolor(X, Y, u[-1, :, :].T, shading='auto')
-    ax.text(1.2, -1.7, f'T = {t[-1]}')
+    ax.text(1.2, -1.7, f't = {t[-1]}')
     plt.show()
 
 #------------------------------------------------------------------
