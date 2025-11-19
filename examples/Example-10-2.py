@@ -655,12 +655,16 @@ end_time = MPI.Wtime()
 # расчётов в файл и/или рисуем график решения.
 
 if rank == 0:
+    # Число процессов, решающих уравнение:
+    Px = P
+    Py = 1
+    # Время расчётов:
     duration1 = end_time - start_time1
     duration2 = end_time - start_time2
 
     if not args.noheader:
-        print('Nx\t Ny\t M\t Procs\t time_tot\t time_sol')
-    print(f'{Nx}\t {Ny}\t {M}\t {P}\t {duration1:.6f}\t {duration2:.6f}')
+        print('Nx\t Ny\t M\t Procs\t Px\t Py\t time_tot\t time_sol')
+    print(f'{Nx}\t {Ny}\t {M}\t {P}\t {Px}\t {Py}\t {duration1:.6f}\t {duration2:.6f}')
 
     # Если нужно, сохраняем данные в файл
     # (только для последнего момента времени, собранные на
