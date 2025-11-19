@@ -1,188 +1,777 @@
+#------------------------------------------------------------------
+# ИЗУЧИТЬ:
+# -- Вспоминаем интерфейс метода `comm_world.Create_cart()` и его
+#    агрумента `reorder=True` (на хорошем суперкомпьютере может
+#    пригодиться для ускорения скорости обмена данными между процессами).
+# -- Сравниваем функции `fast_pde_solution()` и `slow_pde_solution()`.
+#    Первая функция отличается только использованием "срезов"
+#    в массивах библиотеки `numpy` вместо циклов по индексу `n`,
+#    что позволяет ускорить вычисления в ~50 раз (и более,
+#    для больших значений `Nx` и `Ny`).
+#    Обратите внимание на использование `comm.Sendrecv()` в конце
+#    этих функций. Именно они связывают между собой MPI процессы
+#    на каждой итерации вычислений.
+#------------------------------------------------------------------
+# Пример 10.3: Параллельное решение двумерного (2D)
+#              дифференциального уравнения в частных производных
+#              (ДУЧП) параболического типа с использованием
+#              "явной" схемы метода конечных разностей.
+# Реализация №2: Используем блочное разбиение массива решений `u`
+#                на части и вдоль обеих осей, `x` и `y`, и разбрасываем
+#                эти части по всем MPI процессам используя двумерный
+#                декартовый MPI коммуникатор с размером `Px` на `Py`
+#                процессов в каждом направлении. При этом на каждом
+#                процессе хранится только `Nx/Px` точек по оси `x`, и
+#                `Ny/Py` точек по оси `y`. В результате, в сумме каждый
+#                процесс должен обменяться с четырмя соседними процессами
+#                их пограничными точками на правой, левой, нижней и верхней
+#                границах только `2*Nx/Px + 2*Ny/Py` значениями - и число
+#                этих значений уменьшается с ростом числа процессов `Px`
+#                и `Py`. В результате, время работы программы медленно,
+#                но постоянно уменьшается при увеличении числа используемых
+#                процессов (в отличие от выхода на планку в примере 10.2).
+#
+# Задача: найти решение уравнения:
+#            du/dt = eps*(d^2 u/dx^2 + d^2 u/dy^2)
+#                  + u*(du/dx + du/dy) + u^3
+#         где `eps` - это некоторая константа, а `u(x,t)` - это
+#         функция от времени `t` и двух пространственных
+#         координат, `x` и `y`. Считаем, что эта функция определена
+#         на интервале по `x` от `a` до `b`, на интервале по `y`
+#         от `c` до `d` и на интервале по времени от `t0` до `T`.
+#
+# Для решения такой задачи нам нужно дополнительно знать начальное
+# и граничные условия. Будем считать, что в начальный момент времени
+# значения этой функции определяются начальным условием:
+#    u(x, y, t0) = u_init(x, y)
+# где функция `u_init(x, y)` определяется ниже в этом файле.
+# Также считаем, что значения функции на границах `x=a` и `x=b`
+# и границах `y=c` и `y=d` определяются граничными условиями:
+#    u(a, y, t) = u_left(y, t)
+#    u(b, y, t) = u_right(y, t)
+#    u(x, c, t) = u_bottom(x, t)
+#    u(x, d, t) = u_top(x, t)
+# где функции `u_left(y, t)`, `u_right(y, t)`, `u_bottom(x, t)`,
+# и `u_top(x, t)` также определяется ниже в этом файле.
+#
+# Для решения уравнения будем использовать метод конечных разностей,
+# разбивая диапазон [t0, T] по времени на `M` интервалов, диапазон
+# [a, b] по оси `x` на `Nx` интервалов, и диапазон [c, d] по оси `y`
+# на `Ny` интервалов.
+#
+# Для простоты реализации, в этом примере мы будем использовать
+# "явную" разностную схему решения уравнения, которая обладает
+# первым порядком точности по времени и вторым порядком точности
+# по пространственным координатам:
+#    error ~ O(dt, dx^2, dy^2)
+# где `dt = (T-t0) / M` - это шаг по времени `t`,
+# `dx = (b-a) / Nx` - это шаг по координате `x`,
+# `dy = (d-c) / Ny` - это шаг по координате `y`.
+#
+# Такая "явная" схема является условно устойчивой
+# (любопытства ради, смотри неплохой вывод от ИИ на странице:
+# https://share.google/aimode/xvud7ghTqozpU3OUM)
+# только при выполнении жёсткого условия на максимальный
+# шаг по времени:
+#    dt * eps * (1/dx^2 + 1/dy^2) < 0.5
+# что приводит к требованию, что число интервалов по времени `M` должно
+# расти как квадрат числа интервалов по пространству `Nx` и `Ny`:
+# M ~ Nx^2 + Ny^2.
+# То есть, при увеличении `Nx` и `Ny` в 10 раз, нужно увеличить
+# `M` в сто раз!
+#
+#------------------------------------------------------------------
+# Этот пример (в его оригинальном виде "Example-10-3.py")
+# детально обсуждается в лекции Д.В. Лукьяненко "10. Решение задач
+# для уравнений в частных производных. Ч.3", начиная с 72-й минуты:
+# https://youtu.be/I8BWCH2fVDU?list=PLcsjsqLLSfNCxGJjuYNZRzeDIFQDQ9WvC&t=4379
+#
+# Объяснения математической части разностных методов для решения
+# такого уравнения даётся в лекции Д.В. Лукьяненко
+# "Лекция 27. Уравнения в частных производных: многомерные уравнения":
+# https://teach-in.ru/lecture/2021-12-15--Lukyanenko
+#------------------------------------------------------------------
+
+import argparse
+import numpy as np
 from mpi4py import MPI
-from numpy import empty, int32, float64, linspace, tanh, meshgrid, sqrt
-from matplotlib.pyplot import style, figure, axes, show
 
-comm = MPI.COMM_WORLD
-numprocs = comm.Get_size()
 
-num_row = num_col = int32(sqrt(numprocs))
+#------------------------------------------------------------------
+def unit_array(vec1, vec2):
+    if np.isscalar(vec1) and np.isscalar(vec2):
+        return 1.0
+    if np.isscalar(vec1):
+        vec1 = np.array([vec1])
+    if np.isscalar(vec2):
+        vec2 = np.array([vec2])
+    res = np.ones((len(vec1), len(vec2)))
+    return res
 
-comm_cart = comm.Create_cart(dims=(num_row, num_col), periods=(False, False), reorder=True)
-rank_cart = comm_cart.Get_rank()
 
-def u_init(x, y) :
-    u_init = 0.5*tanh(1/eps*((x - 0.5)**2 + (y - 0.5)**2 - 0.35**2)) - 0.17
-    return u_init
+#------------------------------------------------------------------
+def u_init(x, y):
+    """
+    Функция, определяющая начальное условие для u(x, y, t):
+               u(x, y, t0) = u_init(x, y)
+    :param x: Значение пространственной координаты `x`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :param y: Значение пространственной координаты `y`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :return: Значение функции для задания `u(x, y, t0)`.
+    """
+    if not np.isscalar(x) and not np.isscalar(y):
+        x, y = np.meshgrid(x, y)
+        x = x.T
+        y = y.T
+    res = 0.5*np.tanh(((x - 0.5)**2 + (y - 0.5)**2 - 0.35**2)/eps) - 0.17
+    return res
 
-def u_left(y, t) :
-    u_left = 0.33
-    return u_left
 
-def u_right(y, t) :
-    u_right = 0.33
-    return u_right
+#------------------------------------------------------------------
+def u_left(y, t):
+    """
+    Функция, определяющая граничное условие для u(x, y, t)
+    слева, в точке `x=a`:
+               u(a, y, t) = u_left(y, t)
+    :param y: Значение пространственной координаты `y`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :param t: Значение момента времени `t`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :return: Значение функции для задания `u(a, y, t)`.
+    """
+    res = (1.0 / 3.0) * unit_array(t, y)
+    return res
 
-def u_top(x, t) :
-    u_top = 0.33
-    return u_top
 
-def u_bottom(x, t) :
-    u_bottom = 0.33
-    return u_bottom
+#------------------------------------------------------------------
+def u_right(y, t):
+    """
+    Функция, определяющая граничное условие для u(x, y, t)
+    справа, в точке `x=b`:
+               u(b, y, t) = u_right(y, t)
+    :param y: Значение пространственной координаты `y`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :param t: Значение момента времени `t`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :return: Значение функции для задания `u(b, y, t)`.
+    """
+    res = (1.0 / 3.0) * unit_array(t, y)
+    return res
 
-if rank_cart == 0 :
-    start_time = MPI.Wtime()
 
-a = -2.; b = 2.; c = -2.; d = 2.
-t_0 = 0.; T = 5.
-eps = 10**(-1.0)
+#------------------------------------------------------------------
+def u_top(x, t):
+    """
+    Функция, определяющая граничное условие для u(x, y, t)
+    сверху, в точке `y=d`:
+               u(x, d, t) = u_top(x, t)
+    :param x: Значение пространственной координаты `x`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :param t: Значение момента времени `t`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :return: Значение функции для задания `u(x, d, t)`.
+    """
+    res = (1.0 / 3.0) * unit_array(t, x)
+    return res
 
-N_x = 50; N_y = 50; M = 500
 
-h_x = (b - a)/N_x; x = linspace(a, b, N_x+1)
-h_y = (d - c)/N_y; y = linspace(c, d, N_y+1)
+#------------------------------------------------------------------
+def u_bottom(x, t):
+    """
+    Функция, определяющая граничное условие для u(x, y, t)
+    снизу, в точке `y=c`:
+               u(x, c, t) = u_bottom(x, t)
+    :param x: Значение пространственной координаты `x`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :param t: Значение момента времени `t`.
+              Может быть либо одним числом, либо `numpy`
+              массивом, задающим все нужные точки.
+    :return: Значение функции для задания `u(x, c, t)`.
+    """
+    res = (1.0 / 3.0) * unit_array(t, x)
+    return res
 
-tau = (T - t_0)/M; t = linspace(t_0, T, M+1)
 
-def auxiliary_arrays_determination(M, num) : 
-    ave, res = divmod(M, num)
-    rcounts = empty(num, dtype=int32)
-    displs = empty(num, dtype=int32)
-    for k in range(0, num) : 
-        if k < res :
-            rcounts[k] = ave + 1
-        else :
-            rcounts[k] = ave
-        if k == 0 :
-            displs[k] = 0
-        else :
-            displs[k] = displs[k-1] + rcounts[k-1]   
+#------------------------------------------------------------------
+def slow_pde_solution():
+    """
+    Медленная реализация "явной" разностной схемы - основана
+    на использовании медленного цикла по отдельным элементам.
+    """
+    # Используемые глобальные переменные (определяем их здесь
+    # вместо передачи в качестве аргументов функции):
+    global comm, Px, Py, rank_x, rank_y, \
+           M, u_part_aux, Nx_part_aux, Ny_part_aux, \
+           eps_dt_dx2, eps_dt_dy2, dt_2dx, dt_2dy, dt
+
+    # Цикл по всем моментам времени:
+    for m in range(M):
+        # Обновляем внутренние точки на каждом процессе (медленно, циклами по `i` и `j`):
+        for i in range(1, Nx_part_aux-1):
+            for j in range(1, Ny_part_aux-1):
+                u_part_aux[m+1, i, j] = u_part_aux[m, i, j] + \
+                                 eps_dt_dx2 * (u_part_aux[m, i+1, j] - 2*u_part_aux[m, i, j] + u_part_aux[m, i-1, j]) + \
+                                 eps_dt_dy2 * (u_part_aux[m, i, j+1] - 2*u_part_aux[m, i, j] + u_part_aux[m, i, j-1]) + \
+                                 dt_2dx * u_part_aux[m, i, j] * (u_part_aux[m, i+1, j] - u_part_aux[m, i-1, j]) + \
+                                 dt_2dy * u_part_aux[m, i, j] * (u_part_aux[m, i, j+1] - u_part_aux[m, i, j-1]) + \
+                                 dt * u_part_aux[m, i, j]**3
+
+        # Обмениваемся полученными решениями на пограничных точках с соседними
+        # процессами.
+        if rank_x > 0:
+            # Все процессы, кроме нулевого, посылают своё решение для своей первой
+            # вычисленной точки (i=1) предыдущему процессу и получают от него
+            # решение для его последней вычисленной точки (n=Nx_part_aux-2),
+            # записывая его на место своего самого первого элемента (i=0).
+            next_proc = rank_y * Px + (rank_x - 1)
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1, 1:], Ny_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[u_part_aux[m+1, 0, 1:], Ny+1, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+
+        if rank_x < Px-1:
+            # Все процессы, кроме последнего, посылают своё решение для своей
+            # последней вычисленной точки (i=Nx_part_aux-2) следующему процессу
+            # и получают от него решение для его первой вычисленной точки (i=1),
+            # записывая его на место своего самого последнего элемента (i=Nx_part_aux-1).
+            next_proc = rank_y * Px + (rank_x + 1)
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, Nx_part_aux-2, 1:], Ny_part, MPI.DOUBLE],
+                          dest=next_proc, sendtag=0,
+                          recvbuf=[u_part_aux[m+1, Nx_part_aux-1, 1:], Ny_part, MPI.DOUBLE],
+                          source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+
+        if rank_y > 0:
+            temp_array_send = u_part_aux[m+1, 1:Nx_part+1, 1].copy()
+            temp_array_recv = np.empty(Nx_part, dtype=np.float64)
+            next_proc = (rank_y - 1) * Px + rank_x
+            comm.Sendrecv(sendbuf=[temp_array_send, Nx_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[temp_array_recv, Nx_part, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+            u_part_aux[m+1, 1:Nx_part+1, 0] = temp_array_recv
+
+        if rank_y < Py-1:
+            temp_array_send = u_part_aux[m+1, 1:Nx_part+1, Ny_part_aux-2].copy()
+            temp_array_recv = np.empty(Nx_part, dtype=np.float64)
+            next_proc = (rank_y + 1) * Px + rank_x
+            comm.Sendrecv(sendbuf=[temp_array_send, Nx_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[temp_array_recv, Nx_part, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+            u_part_aux[m+1, 1:Nx_part+1, Ny_part_aux-1] = temp_array_recv
+
+
+#------------------------------------------------------------------
+def fast_pde_solution():
+    """
+    Быстрая реализация "явной" разностной схемы - основана
+    на использовании "срезов" вместо цикла по отдельным элементам.
+    """
+    # Используемые глобальные переменные (определяем их здесь
+    # вместо передачи в качестве аргументов функции):
+    global comm, P, rank, M, u_part_aux, Nx_part_aux, Ny, \
+           eps_dt_dx2, eps_dt_dy2, dt_2dx, dt_2dy, dt
+
+    # Цикл по всем моментам времени:
+    for m in range(M):
+        # Обновляем внутренние точки на каждом процессе (быстро, используя "срезы"):
+        u_part_aux[m+1, 1:-1, 1:-1] = u_part_aux[m, 1:-1, 1:-1] + \
+                 eps_dt_dx2 * (u_part_aux[m, 2:, 1:-1] - 2*u_part_aux[m, 1:-1, 1:-1] + u_part_aux[m, :-2, 1:-1]) + \
+                 eps_dt_dy2 * (u_part_aux[m, 1:-1, 2:] - 2*u_part_aux[m, 1:-1, 1:-1] + u_part_aux[m, 1:-1, :-2]) + \
+                 dt_2dx * u_part_aux[m, 1:-1, 1:-1] * (u_part_aux[m, 2:, 1:-1] - u_part_aux[m, :-2, 1:-1]) + \
+                 dt_2dy * u_part_aux[m, 1:-1, 1:-1] * (u_part_aux[m, 1:-1, 2:] - u_part_aux[m, 1:-1, :-2]) + \
+                 dt * u_part_aux[m, 1:-1, 1:-1]**3
+
+        # Обмениваемся полученными решениями на пограничных точках с соседними
+        # процессами.
+        if rank_x > 0:
+            # Все процессы, кроме нулевого, посылают своё решение для своей первой
+            # вычисленной точки (i=1) предыдущему процессу и получают от него
+            # решение для его последней вычисленной точки (n=Nx_part_aux-2),
+            # записывая его на место своего самого первого элемента (i=0).
+            next_proc = rank_y * Px + (rank_x - 1)
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, 1, 1:], Ny_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[u_part_aux[m+1, 0, 1:], Ny+1, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+
+        if rank_x < Px-1:
+            # Все процессы, кроме последнего, посылают своё решение для своей
+            # последней вычисленной точки (i=Nx_part_aux-2) следующему процессу
+            # и получают от него решение для его первой вычисленной точки (i=1),
+            # записывая его на место своего самого последнего элемента (i=Nx_part_aux-1).
+            next_proc = rank_y * Px + (rank_x + 1)
+            comm.Sendrecv(sendbuf=[u_part_aux[m+1, Nx_part_aux-2, 1:], Ny_part, MPI.DOUBLE],
+                          dest=next_proc, sendtag=0,
+                          recvbuf=[u_part_aux[m+1, Nx_part_aux-1, 1:], Ny_part, MPI.DOUBLE],
+                          source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+
+        if rank_y > 0:
+            temp_array_send = u_part_aux[m+1, 1:Nx_part+1, 1].copy()
+            temp_array_recv = np.empty(Nx_part, dtype=np.float64)
+            next_proc = (rank_y - 1) * Px + rank_x
+            comm.Sendrecv(sendbuf=[temp_array_send, Nx_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[temp_array_recv, Nx_part, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+            u_part_aux[m+1, 1:Nx_part+1, 0] = temp_array_recv
+
+        if rank_y < Py-1:
+            temp_array_send = u_part_aux[m+1, 1:Nx_part+1, Ny_part_aux-2].copy()
+            temp_array_recv = np.empty(Nx_part, dtype=np.float64)
+            next_proc = (rank_y + 1) * Px + rank_x
+            comm.Sendrecv(sendbuf=[temp_array_send, Nx_part, MPI.DOUBLE],
+                               dest=next_proc, sendtag=0,
+                               recvbuf=[temp_array_recv, Nx_part, MPI.DOUBLE],
+                               source=next_proc, recvtag=MPI.ANY_TAG, status=None)
+            u_part_aux[m+1, 1:Nx_part+1, Ny_part_aux-1] = temp_array_recv
+
+
+# ------------------------------------------------------------------
+def auxiliary_arrays_determination(M, P):
+    """
+    Расчёт списков числа элементов `rcounts` и соответствующих
+    смещений `displs`, определяющих распределение элементов вектора
+    решения `u[m]` по всем процессам MPI коммуникатора в виде
+    частичных векторов `u_part`.
+    Наша задача при этом - разбросать вектор `u[m]` по всем
+    процессам максимально равномерно и без пересечений.
+
+    :param M: Общее число элементов вдоль нужной оси матрицы.
+    :param P: Общее число процессов вдоль нужной оси сетки процессов,
+              работающих над параллелизацией вычислений.
+    :return: Рассчитанные списки числа элементов `rcounts` и
+             соответствующих смещений "displs", определяющие
+             передачу данных каждому процессу.
+    """
+    # Считая, что M = P * K + L, где K и L - это целые числа,
+    # причём 0 <= L <= P-1, мы можем держать на каждом процессе
+    # либо по K+1 либо по К элементов, для максимальной балансировки
+    # памяти и вычислений по всем "рабочим" процессам.
+    # Найдём целые числа K и L из описания алгоритма выше:
+    K, L = divmod(np.int32(M), P)
+
+    # Введём два новых списка для описания того, как именно
+    # матрицы и векторы будут распределяться по всем процессам.
+    # Здесь `rcounts` будет содержать число элементов, хранимое
+    # каждым процессом (это K+1 для первых L процессов,
+    # и K для оставшихся процессов).
+    # Другой список `displs` будет содержать индекс смещений
+    # - то есть, номер первого элемента, начиная с которой будут
+    # храниться `rcounts[m]` элементов на процессе `m`.
+    # При этом мы предполагаем, что все элементы, которые
+    # хранятся на каждом процессе, идут подряд.
+    rcounts = np.empty(P, dtype=np.int32)
+    displs = np.empty(P, dtype=np.int32)
+
+    # Цикл по всем процессам (они все "рабочие"):
+    for m in range(0, P):
+        if m < L:
+            # Процессы от 0 до L-1 содержат по K+1 элементов
+            # (если L=0, то таких процессов не будет!):
+            rcounts[m] = K + 1
+        else:
+            # Оставшиеся процессы от L до P-1 содержат по K элементов:
+            rcounts[m] = K
+        # Индекс смещений равен 0 для процесса 0 и сдвигается
+        # для каждого следующего процесса на число элементов,
+        # хранимых в предыдущем процессе:
+        if m == 0:
+            displs[m] = 0
+        else:
+            displs[m] = displs[m - 1] + rcounts[m - 1]
     return rcounts, displs
 
-rcounts_N_x, displs_N_x = auxiliary_arrays_determination(N_x + 1, num_col)
-rcounts_N_y, displs_N_y = auxiliary_arrays_determination(N_y + 1, num_row)
 
-my_row, my_col = comm_cart.Get_coords(rank_cart)  
-    
-N_x_part = rcounts_N_x[my_col]
-N_y_part = rcounts_N_y[my_row]
-    
-if my_col in [0, num_col - 1] :
-    N_x_part_aux = N_x_part + 1
-else :
-    N_x_part_aux = N_x_part + 2
-    
-if my_row in [0, num_row - 1] :
-    N_y_part_aux = N_y_part + 1
-else :
-    N_y_part_aux = N_y_part + 2
-    
-displs_N_x_aux = displs_N_x - 1; displs_N_x_aux[0] = 0
-displs_N_y_aux = displs_N_y - 1; displs_N_y_aux[0] = 0
+# ------------------------------------------------------------------
+def auxiliary_arrays_from_0(rcounts, displs):
+    """
+    Расчёт списков числа элементов `rcounts_aux` и соответствующих
+    смещений `displs_aux`, определяющих распределение элементов
+    вектора решения `u[m]` по всем процессам MPI коммуникатора в виде
+    вспомогательных частичных векторов `u_part_aux`.
+    В качестве основы берём уже рассчитанные списки числа элементов
+    `rcounts` и соответствующих смещений `displs`, определяющих
+    распределение элементов вектора решения `u[m]` по всем процессам
+    MPI коммуникатора в виде частичных векторов `u_part`.
+    Наша задача при этом - разбросать вектор `u[m]` по всем процессам
+    таким образом, чтобы по сравнению с частичными векторами `u_part`
+    каждому процессу достались дополнительно ещё и по одному
+    дополнительному элементу слева и/или справа, рассчитанных
+    на соседних процессах.
 
-displ_x_aux = displs_N_x_aux[my_col]
-displ_y_aux = displs_N_y_aux[my_row]
+    :param rcounts: Список числа элементов, определяющий распределение
+              элементов вектора решения `u[m]` по всем процессам MPI
+              коммуникатора в виде частичных векторов `u_part`.
+    :param displs: Список смещений, определяющий распределение
+              элементов вектора решения `u[m]` по всем процессам MPI
+              коммуникатора в виде частичных векторов `u_part`.
+    :return:  Рассчитанные списки числа элементов `rcounts_aux`
+              и соответствующих смещений `displs_aux`, определяющих
+              распределение элементов вектора решения `u[m]` по всем
+              процессам MPI коммуникатора в виде вспомогательных
+              частичных векторов `u_part_aux`.
+    """
+    # Возьмём в качестве основы копии входных списков:
+    rcounts_aux = rcounts.copy()
+    displs_aux = displs.copy()
 
-u_part_aux = empty((M + 1, N_x_part_aux, N_y_part_aux), dtype=float64)
+    # На всех процессах от 0 до P-2 включительно вектор
+    # `u_part_aux` по сравнению с вектором `u_part` содержит
+    # один дополнительный элемент справа:
+    rcounts_aux[:-1] += 1
 
-for i in range(N_x_part_aux) :
-    for j in range(N_y_part_aux) :
-        u_part_aux[0, i, j] = u_init(x[displ_x_aux + i], y[displ_y_aux + j])  
-        
-for m in range(1, M + 1) :
-    for j in range(1, N_y_part_aux - 1) :
-        if my_col == 0 :
-            u_part_aux[m, 0, j] = u_left(y[displ_y_aux + j], t[m])
-        if my_col == num_col - 1 :
-            u_part_aux[m, N_x_part_aux - 1, j] = u_right(y[displ_y_aux + j], t[m])
-    for i in range(N_x_part_aux) :
-        if my_row == 0 :
-            u_part_aux[m, i, 0] = u_bottom(x[displ_x_aux + i], t[m])
-        if my_row == num_row - 1 :
-            u_part_aux[m, i, N_y_part_aux - 1] = u_top(x[displ_x_aux + i], t[m])
-        
-for m in range(M) :
-    
-    for i in range(1, N_x_part_aux - 1) :
-        for j in range(1, N_y_part_aux - 1) :
-            u_part_aux[m+1, i, j] =  u_part_aux[m,i,j] + \
-                tau*(eps*((u_part_aux[m,i+1,j] - 2*u_part_aux[m,i,j] + u_part_aux[m,i-1,j])/h_x**2 +
-                          (u_part_aux[m,i,j+1] - 2*u_part_aux[m,i,j] + u_part_aux[m,i,j-1])/h_y**2) +
-                      u_part_aux[m,i,j]*((u_part_aux[m,i+1,j] - u_part_aux[m,i-1,j])/(2*h_x) +
-                                (u_part_aux[m,i,j+1] - u_part_aux[m,i,j-1])/(2*h_y)) + 
-                      u_part_aux[m,i,j]**3)
-                
-    if my_col > 0 : 
-        comm_cart.Sendrecv(sendbuf=[u_part_aux[m+1, 1, 1:], N_y_part, MPI.DOUBLE], 
-                           dest=my_row*num_col + (my_col-1), sendtag=0, 
-                           recvbuf=[u_part_aux[m+1, 0, 1:], N_y_part, MPI.DOUBLE], 
-                           source=my_row*num_col + (my_col-1), recvtag=MPI.ANY_TAG, status=None)
-        
-    if my_col < num_col-1 :
-        comm_cart.Sendrecv(sendbuf=[u_part_aux[m+1, N_x_part_aux-2, 1:], N_y_part, MPI.DOUBLE], 
-                           dest=my_row*num_col + (my_col+1), sendtag=0, 
-                           recvbuf=[u_part_aux[m+1, N_x_part_aux-1, 1:], N_y_part, MPI.DOUBLE], 
-                           source=my_row*num_col + (my_col+1), recvtag=MPI.ANY_TAG, status=None)
-        
-    if my_row > 0 :     
-        temp_array_send = u_part_aux[m+1, 1:N_x_part+1, 1].copy()
-        temp_array_recv = empty(N_x_part, dtype=float64)
-        comm_cart.Sendrecv(sendbuf=[temp_array_send, N_x_part, MPI.DOUBLE], 
-                           dest=(my_row-1)*num_col + my_col, sendtag=0, 
-                           recvbuf=[temp_array_recv, N_x_part, MPI.DOUBLE], 
-                           source=(my_row-1)*num_col + my_col, recvtag=MPI.ANY_TAG, status=None)
-        u_part_aux[m+1, 1:N_x_part+1, 0] = temp_array_recv
-        
-    if my_row < num_row-1 :    
-        temp_array_send = u_part_aux[m+1, 1:N_x_part+1, N_y_part_aux-2].copy()
-        temp_array_recv = empty(N_x_part, dtype=float64)
-        comm_cart.Sendrecv(sendbuf=[temp_array_send, N_x_part, MPI.DOUBLE], 
-                           dest=(my_row+1)*num_col + my_col, sendtag=0, 
-                           recvbuf=[temp_array_recv, N_x_part, MPI.DOUBLE], 
-                           source=(my_row+1)*num_col + my_col, recvtag=MPI.ANY_TAG, status=None)
-        u_part_aux[m+1, 1:N_x_part+1, N_y_part_aux-1] = temp_array_recv
-        
-if rank_cart == 0 :
-    end_time = MPI.Wtime()
+    # На всех процессах от 1 до P-1 включительно вектор
+    # `u_part_aux` по сравнению с вектором `u_part` содержит
+    # один дополнительный элемент слева:
+    rcounts_aux[1:] += 1
 
-if rank_cart == 0 :
-    u_T = empty((N_x + 1, N_y + 1), dtype=float64)
-else : 
+    # Вектор смещения `displs_aux` уменьшается на единицу на
+    # процессах от 1 до P-1 включительно - то есть, на всех процессах,
+    # на которых вектор `u_part_aux` по сравнению с вектором `u_part`
+    # содержит один дополнительный элемент слева:
+    displs_aux[1:] -= 1
+
+    return rcounts_aux, displs_aux
+
+
+#------------------------------------------------------------------
+# Начинаем выполнение программы - первым делом, включаем таймер:
+start_time1 = MPI.Wtime()
+
+#------------------------------------------------------------------
+# Шаг 0, Часть 1:
+# Распарсим аргументы запуска программы.
+
+parser = argparse.ArgumentParser(
+            prog='python Example-10-3.py',
+            description='Решение 2D ДУЧП параболического типа с использованием '
+                        '"явной" разностной схемы с блочной 2D MPI параллелизацией.',
+)
+parser.add_argument('-Px', default=None,
+                    help='Число `Px` процессов по координате `x`. '
+                         'По умолчанию не определено и вычисляется автоматически.')
+parser.add_argument('-Py', default=None,
+                    help='Число `Py` процессов по координате `y`. '
+                         'По умолчанию не определено и вычисляется автоматически.')
+parser.add_argument('-Nx', default=100,
+                    help='Число `Nx` интервалов сетки по координате `x`. '
+                         'По умолчанию равно 100.')
+parser.add_argument('-Ny', default=100,
+                    help='Число `Ny` интервалов сетки по координате `y`. '
+                         'По умолчанию равно 100.')
+parser.add_argument('-M', default=2000,
+                    help='Число `M` интервалов сетки по времени `t`. '
+                         'По умолчанию равно 2000.')
+parser.add_argument('-T', default=5.0,
+                    help='Максимальное время `T`, до которого должны проводиться '
+                         'расчёты. По умолчанию равно 5.0.')
+parser.add_argument('--slow', action="store_true",
+                    help='Использовать медленную реализацию решения, '
+                         'с циклом по `i` и `j` при обновлении `u[m,i,j]` '
+                         'вместо использования срезов `u[m,:,:]`.')
+parser.add_argument('--noheader', action="store_true",
+                    help='Не печатать названия колонок в выводе времени счёта.')
+parser.add_argument('--save', action="store_true",
+                    help='Сохранить результаты расчётов для последнего момента '
+                         'времени в файл "Example-10-3_Results.npz".')
+parser.add_argument('--plot', action="store_true",
+                    help='Нарисовать решение для последнего момента времени.')
+
+args = parser.parse_args()
+
+#------------------------------------------------------------------
+# Шаг 0, Часть 2:
+# Настроим MPI коммуникатор.
+
+# Работаем с коммуникатором по всем доступным процессам:
+comm_world = MPI.COMM_WORLD
+
+# Число P доступных процессов в этом коммуникаторе:
+P = comm_world.Get_size()
+
+# Номер текущего процесса (от 0 до P-1):
+rank_world = comm_world.Get_rank()
+
+# Считаем для простоты разбиения матрицы на блоки, что наше число
+# процессов P=R*R является квадратом некоторого целого числа R:
+
+Px = None if args.Px is None else int(args.Px)
+Py = None if args.Py is None else int(args.Py)
+
+if Px is None and Py is None:
+    Px = Py = int(np.sqrt(P))
+elif Px is None and Py is not None:
+    Px = P // Py
+elif Py is None and Px is not None:
+    Py = P // Px
+
+if Px * Py != P:
+    raise ValueError(
+        "\nИспользуемые числа числа процессов вдоль осей декартовой сетки "
+        f"MPI коммуникатора (Px={Px} и Py={Py}) не согласуется с общим числом"
+        f"MPI процессов (P={P})."
+    )
+
+# Создадим двумерный декартовый коммуникатор на основе `comm_world` -
+# при работе на реальном суперкомпьютере, аргумент `reorder=True`
+# позволит нам оптимизировать нумерацию процессов для обеспечения
+# наибольшей скорости коммуникаций между соседними процессами:
+comm = comm_world.Create_cart(dims=[Py, Px], periods=[False, False], reorder=True)
+rank = comm.Get_rank()
+
+# Проверим, изменился ли номер процесса
+# (NOTE: на Windows кластере, работающем под MS MPI, ничего не меняется):
+if rank != rank_world:
+    print(f'MPI Cartezian Communicator is reordered: rank {rank_world} --> {rank}')
+
+#------------------------------------------------------------------
+# Шаг 1:
+# Задаём значения для всех констант, определяемых условиями задачи.
+eps = 10**(-1.0)
+a = -2.0; b = 2.0
+c = -2.0; d = 2.0
+t_0 = 0.0
+
+T = float(args.T)
+Nx = int(args.Nx)
+Ny = int(args.Ny)
+M = int(args.M)
+
+#------------------------------------------------------------------
+# Шаг 2:
+# Находим значения для всех вспомогательных констант.
+
+# Шаг по пространству:
+dx = (b - a) / Nx
+dy = (d - c) / Ny
+
+# Шаг по времени:
+dt = (T - t_0) / M
+
+# Константы для "быстрого" использования внутри разностной схемы:
+eps_dt_dx2 = eps * dt / dx**2
+eps_dt_dy2 = eps * dt / dy**2
+dt_2dx = dt / (2 * dx)
+dt_2dy = dt / (2 * dy)
+
+# Условие устойчивости "явной" разностной схемы
+#    dt * eps * (1/dx^2 + 1/dy^2) < 0.5
+# соответсвтует условию
+#   eps_dt_dx2 + eps_dt_dy2 < 0.5
+# Проверим его:
+msg = None
+stability_factor = eps_dt_dx2 + eps_dt_dy2
+if stability_factor >= 0.5:
+    msg = f'WARNING: Нарушено условие устойчивости "явной" разностной схемы: ' + \
+          f'eps*dt*(1/dx^2 + 1/dy^2) = {stability_factor:.3f} (а должно быть меньше 0.5!).'
+    print(msg)
+
+# Массивы для хранения точек используемой сетки по пространству:
+x = np.linspace(a, b, Nx+1)
+y = np.linspace(c, d, Ny+1)
+# и по времени:
+t = np.linspace(t_0, T, M+1)
+
+#------------------------------------------------------------------
+# Шаг 3:
+# Задаём списки числа элементов и соответствующих смещений,
+# определяющих распределение элементов решения `u[m, i, j]` по
+# частичным матрицам `u_part_aux[m, i, j]` на всех процессах
+# MPI коммуникатора.
+
+# Списки числа элементов и смещений для максимально равномерного
+# (без изъятий или пересечений) распределения элементов решения
+# `u[m, i, j]` по всем MPI процессам.
+# Всю логику расчёта этих списков мы перенесём в отдельную
+# функцию `auxiliary_arrays_determination()`, определённую
+# выше в этом файле - смотри комментарии в ней.
+
+# Хотя полные списки нужны только на процессе 0, давайте перестанем
+# наконец экономить память по мизеру, и вычислим эти списки
+# на ВСЕХ процессах:
+rcounts_Nx, displs_Nx = auxiliary_arrays_determination(Nx+1, Px)
+rcounts_Ny, displs_Ny = auxiliary_arrays_determination(Ny+1, Py)
+
+# Номера процессов по осям `x` и `y`:
+rank_y, rank_x = comm.Get_coords(rank)
+
+# Для краткости записи, введём на каждом процессе переменные
+# `Nx_part` и `Ny_part` с локальным (для данного процесса)
+# значениями числа хранимых на процессе элементов вдоль
+# осей `x` и `y`:
+Nx_part = rcounts_Nx[rank_x]
+Ny_part = rcounts_Ny[rank_y]
+
+# Списки числа элементов и смещений для частичных матриц
+# `u_part_aux` - тут мы разбрасываем вектор `u[m]` по всем
+# MPI процессам с пересечениями, добавляя по одному (для
+# нулевого и последнего процесса) или по два (для всех
+# остальных процессов) дополнительных элементов слева и/или
+# справа от элементов, включённых в список `rcounts`.
+# Всю логику расчёта этих списков мы перенесём в отдельную
+# функцию `auxiliary_arrays_from_0()`, определённую
+# выше в этом файле - смотри комментарии в ней.
+
+# Хотя полные списки нужны только на процессе 0, давайте перестанем
+# наконец экономить память по мизеру, и вычислим эти списки
+# на ВСЕХ процессах:
+rcounts_Nx_aux, displs_Nx_aux = auxiliary_arrays_from_0(rcounts_Nx, displs_Nx)
+rcounts_Ny_aux, displs_Ny_aux = auxiliary_arrays_from_0(rcounts_Ny, displs_Ny)
+
+# Для краткости записи, введём на каждом процессе переменные
+# `Nx_part_aux`, `displ_x_aux`, `Ny_part_aux`, и `displ_y_aux`
+# с локальными (для данного процесса) значениями числа хранимых
+# на процессе элементов (включая и пограничные) вдоль осей `x`
+# и `y`, и их соответствующих смещений:
+Nx_part_aux = rcounts_Nx_aux[rank_x]
+displ_x_aux = displs_Nx_aux[rank_x]
+
+Ny_part_aux = rcounts_Ny_aux[rank_y]
+displ_y_aux = displs_Ny_aux[rank_y]
+
+#------------------------------------------------------------------
+# Шаг 4:
+# Создаём массивы для хранения решения и задаём начальное и граничные
+# условия.
+
+# Считаем, что решение нашего ДУЧП накапливается по частям на каждом
+# из MPI процессов и сохраняется в частичных массивах `u_part_aux[m, i, j]`.
+# Здесь `m=0..M` - это индекс по моментам времени `t`, `i=0..Nx_part_aux-1` -
+# это индекс по пространственной переменной `x`, а `j=0..Ny_part_aux-1` -
+# это индекс по пространственной переменной `y`.
+# То есть, на каждом MPI процессе мы храним решение для всех моментов
+# времени, но только для тех точек по осям `x` и `y`,
+# которые включаются в "расширенную" (с включением дополнительных точек
+# на левой и правой границе) область каждого данного процесса.
+# Доступ к элементу `u_part_aux[m, i, j]` возможен также как к
+# `u_part_aux[m][i, j]` - при этом вектор `u_part_aux[m]`
+# соответствует частичному решению ДУЧП на данном процессе в момент времени `m`.
+
+# Сделаем "хранилище" для массива `u_part_aux` на каждом процессе:
+u_part_aux = np.empty((M+1, Nx_part_aux, Ny_part_aux), dtype=np.float64)
+
+# Начальное условие (на всех процессах):
+x_part_aux = x[displ_x_aux:displ_x_aux+Nx_part_aux]
+y_part_aux = y[displ_y_aux:displ_y_aux+Ny_part_aux]
+u_part_aux[0, :, :] = u_init(x_part_aux, y_part_aux)
+
+# Граничное условие слева (только на нулевых процессах по оси `x`):
+if rank_x == 0:
+    u_part_aux[:, 0, :] = u_left(y_part_aux, t)
+
+# Граничное условие справа (только на последних процессах по оси `x`):
+if rank_x == Px-1:
+    u_part_aux[:, -1, :] = u_right(y_part_aux, t)
+
+# Граничное условие снизу (только на нулевых процессах по оси `y`):
+if rank_y == 0:
+    u_part_aux[:, :, 0] = u_bottom(x_part_aux, t)
+
+# Граничное условие сверху (только на последних процессах по оси `y`):
+if rank_y == Py-1:
+    u_part_aux[:, :, -1] = u_top(x_part_aux, t)
+
+#------------------------------------------------------------------
+# Шаг 5:
+# Собственно, и сама нужная нам работа - решение нашего уравнения
+# с помощью "явной" разностной схемы. По умолчанию, решаем уравнение
+# быстро, но через переключатель '--slow' решаем медленно, как это
+# было сделано в оригинальной версии программы. Сравните код обеих
+# функций, `slow_pde_solution()` и `fast_pde_solution()`.
+# Обратите внимание, что хотя эти функции вызываются без аргументов,
+# они переиспользуют многие из введённых выше переменных как глобальные
+# переменные (все такие переменные указаны в функциях как `global`).
+
+start_time2 = MPI.Wtime()
+
+if args.slow:
+    slow_pde_solution()
+else:
+    fast_pde_solution()
+
+# Соберём теперь на процессе 0 полученное решение для последнего момента
+# времени в виде полного (с размером `N+1`) вектора `u_T`.
+
+# Создадим "хранилище" для этого вектора решения `u_T`:
+if rank == 0:
+    u_T = np.empty((Nx+1, Ny+1), dtype=np.float64)
+else:
     u_T = None
 
-if rank_cart == 0 :
-    for m in range(num_row) :
-        for n in range(num_col) :
-            if m == 0 and n == 0 :
-                for i in range(N_x_part) :
-                    u_T[i, 0:N_y_part] = u_part_aux[M, i, 0:N_y_part]
-            else :
-                for i in range(rcounts_N_x[n]) :
-                    comm_cart.Recv([u_T[displs_N_x[n] + i, displs_N_y[m]:], rcounts_N_y[m], MPI.DOUBLE], 
-                                   source=(m*num_col + n), tag=0, status=None)
-else :
-    for i in range(N_x_part) :
-        if my_row == 0 :
-            if my_col == 0 :
-                comm_cart.Send([u_part_aux[M, i, 0:], N_y_part, MPI.DOUBLE], dest=0, tag=0)
-            if my_col in range(1, num_col) :
-                comm_cart.Send([u_part_aux[M, 1+i, 0:], N_y_part, MPI.DOUBLE], dest=0, tag=0)
-        if my_row in range(1, num_row) :
-            if my_col == 0 :
-                comm_cart.Send([u_part_aux[M, i, 1:], N_y_part, MPI.DOUBLE], dest=0, tag=0)
-            if my_col in range(1, num_col) :
-                comm_cart.Send([u_part_aux[M, 1+i, 1:], N_y_part, MPI.DOUBLE], dest=0, tag=0)
+# И соберём все рассчитанные данные из частичных векторов `u_part_aux[M]`
+# на всех процессах в полный вектор `u_T` на процессе 0.
+# При этом мы выбрасываем из `u_part_aux[M]` лишние для `u_T` пограничные
+# точки вдоль осей `x` и `y`, которые дублируются на соседних процессах:
+if rank == 0:
+    for p_y in range(Py):
+        for p_x in range(Px):
+            if p_y == 0 and p_x == 0:
+                for i in range(Nx_part):
+                    u_T[i, 0:Ny_part] = u_part_aux[M, i, 0:Ny_part]
+            else:
+                for i in range(rcounts_Nx[p_x]):
+                    comm.Recv([u_T[displs_Nx[p_x] + i, displs_Ny[p_y]:], rcounts_Ny[p_y], MPI.DOUBLE],
+                                   source=(p_y * Px + p_x), tag=0, status=None)
+else:
+    for i in range(Nx_part):
+        if rank_y == 0:
+            if rank_x == 0:
+                comm.Send([u_part_aux[M, i, 0:], Ny_part, MPI.DOUBLE], dest=0, tag=0)
+            if rank_x in range(1, Py):
+                comm.Send([u_part_aux[M, 1 + i, 0:], Ny_part, MPI.DOUBLE], dest=0, tag=0)
+        if rank_y in range(1, Px):
+            if rank_x == 0:
+                comm.Send([u_part_aux[M, i, 1:], Ny_part, MPI.DOUBLE], dest=0, tag=0)
+            if rank_x in range(1, Py):
+                comm.Send([u_part_aux[M, 1 + i, 1:], Ny_part, MPI.DOUBLE], dest=0, tag=0)
 
-if rank_cart == 0 :
-    
-    print('N_x={}, N_y={}, M={}'.format(N_x, N_y, M))
-    print('Number of MPI process is {}'.format(numprocs))
-    print('Elapsed time is {:.4f} sec.'.format(end_time-start_time))
-    
-    style.use('dark_background')
-    fig = figure()
-    ax = axes(xlim=(a,b), ylim=(c, d))
-    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_aspect('equal') 
-    X, Y = meshgrid(x, y)
-    ax.pcolor(X, Y, u_T, shading='auto')
-    show()
+end_time = MPI.Wtime()
+
+#------------------------------------------------------------------
+# Шаг 6:
+# Печатаем время выполнения и, если нужно, сохраняем результаты
+# расчётов в файл и/или рисуем график решения.
+
+if rank == 0:
+    # Время расчётов:
+    duration1 = end_time - start_time1
+    duration2 = end_time - start_time2
+
+    if not args.noheader:
+        print('Nx\t Ny\t M\t Procs\t Px\t Py\t time_tot\t time_sol')
+    print(f'{Nx}\t {Ny}\t {M}\t {P}\t {Px}\t {Py}\t {duration1:.6f}\t {duration2:.6f}')
+
+    # Если нужно, сохраняем данные в файл
+    # (только для последнего момента времени, собранные на
+    #  процессе 0 в конце предыдущего шага программы):
+    if args.save:
+        filename = 'Example-10-3_Results.npz'
+        print(f"Сохраняем данные в файл '{filename}'.")
+        np.savez(filename, x=x, y=y, t=T, u=u_T)
+
+    # Если нужно, рисуем решение для последнего момента времени:
+    if args.plot:
+        from matplotlib import pyplot as plt
+        plt.style.use('dark_background')
+        fig = plt.figure()
+        ax = plt.axes(xlim=(a, b), ylim=(c, d))
+        ax.set_xlabel('x'); ax.set_ylabel('y')
+        ax.set_aspect('equal')
+        X, Y = np.meshgrid(x, y)
+        ax.pcolor(X, Y, u_T.T, shading='auto')
+        ax.text(1.2, -1.7, f't = {t[-1]}')
+        plt.show()
+
+
+#------------------------------------------------------------------
