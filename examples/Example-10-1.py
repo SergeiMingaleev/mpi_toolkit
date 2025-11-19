@@ -252,7 +252,7 @@ start_time1 = time.perf_counter()
 
 parser = argparse.ArgumentParser(
             prog='python Example-10-1.py',
-            description='Решение 1D ДУЧП параболического типа с использованием '
+            description='Решение 2D ДУЧП параболического типа с использованием '
                         '"явной" разностной схемы без MPI параллелизации.',
 )
 parser.add_argument('-Nx', default=100,
@@ -399,7 +399,7 @@ if args.saveall:
     # Сохраним данные для всех времён:
     np.savez(filename, x=x, y=y, t=t, u=u)
 
-# Если нужно, рисуем решение для нескольких моментов времени:
+# Если нужно, рисуем решение для последнего момента времени:
 if args.plot:
     from matplotlib import pyplot as plt
     plt.style.use('dark_background')
