@@ -375,13 +375,13 @@ end_time = time.perf_counter()
 # Печатаем время выполнения и, если нужно, сохраняем результаты
 # расчётов в файл и/или рисуем график решения.
 
-P = 1  # Число процессов, решающих уравнение.
+P = Px = Py = 1  # Число процессов, решающих уравнение.
 duration1 = end_time - start_time1
 duration2 = end_time - start_time2
 
 if not args.noheader:
-    print('Nx\t Ny\t M\t Procs\t time_tot\t time_sol')
-print(f'{Nx}\t {Ny}\t {M}\t {P}\t {duration1:.6f}\t {duration2:.6f}')
+    print('Nx\t Ny\t M\t Procs\t Px\t Py\t time_tot\t time_sol')
+print(f'{Nx}\t {Ny}\t {M}\t {P}\t {Px}\t {Py}\t {duration1:.6f}\t {duration2:.6f}')
 
 # Если нужно, сохраняем данные в файл:
 if args.save:
