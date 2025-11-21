@@ -69,7 +69,7 @@ def parse_arguments():
                              'По умолчанию равно 800.')
     parser.add_argument('-M', default=100_000,
                         help='Число `M` интервалов сетки по времени `t`. '
-                             'По умолчанию равно 1000.')
+                             'По умолчанию равно 100_000.')
     parser.add_argument('-T', default=2.0,
                         help='Максимальное время `T`, до которого должны проводиться '
                              'расчёты. По умолчанию равно 2.0.')
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         procs = procs_for_hosts[args.hosts]
 
     speed = 'slow' if args.slow else 'fast'
-    save_file = f'Results_N{N}_M{M}_{speed}'
+    save_file = f'Results08_N{N}_M{M}_{speed}'
     if args.pwd is not None:
         save_file += f'_hosts_{args.hosts}'
     save_file += '.dat'
